@@ -17,9 +17,13 @@
 
     let score = 0;
     let totalFillableCells = 0;
-    let gameState = 'playing'; 
+    let gameState = 'splashScreen'; 
     let percentualAreaExibido = 0; 
     let elementoInfoPercentual; 
+
+    let splashScreenImage;
+    let splashScreenTimer = 0;
+    const SPLASH_DURATION = 4000; // 4 seconds in milliseconds
 
     let restartButtonProps = { x: 0, y: 0, w: 0, h: 0, label: "Reiniciar" };
 
@@ -662,6 +666,7 @@
     let cnv; 
 
     function setup() {
+      splashScreenImage = document.getElementById('splashscreen-image');
       elementoInfoPercentual = document.getElementById('info-percentual');
 
       // *** AJUSTE NO CÁLCULO DA ALTURA DO CANVAS PARA MAXIMIZAR ÁREA ÚTIL ***
@@ -692,11 +697,31 @@
       
       angleMode(RADIANS); 
       setupTouchControls(); 
-      resetGame(); 
+      // resetGame(); // Called after splash screen
       frameRate(30); 
     }
 
     function draw() {
+      if (gameState === 'splashScreen') {
+        // We don't need to draw anything on the canvas for the splash,
+        // as it's an HTML overlay. We just count time.
+        splashScreenTimer += deltaTime; // p5.js provides deltaTime
+
+        if (splashScreenTimer >= SPLASH_DURATION) {
+          if (splashScreenImage) {
+            splashScreenImage.style.display = 'none';
+          }
+          gameState = 'playing';
+          resetGame(); // Initialize the game after splash screen
+        }
+        // It's important to return here or ensure no other drawing happens
+        // if the splash is active and you don't want the canvas visible yet.
+        // However, since the splash is an overlay, the canvas will be drawn underneath.
+        // If a black background is desired for the canvas during splash, it can be added.
+        // background(0); // Optional: if you want to ensure canvas is black behind splash
+        return; // Stop further drawing in this frame if splash is active
+      }
+
       if (gameState === 'playing') {
         if (currentTouchButtonDirection.dx !== 0 || currentTouchButtonDirection.dy !== 0) {
             player.setDirection(currentTouchButtonDirection.dx, currentTouchButtonDirection.dy);

@@ -67,3 +67,14 @@ body {
     .touch-button:active {
         background-color: rgba(120, 120, 120, 0.9);
     }
+
+  #splashscreen-image {
+    position: fixed; /* Use fixed to cover the entire viewport */
+    top: 0;
+    left: 0;
+    width: 100vw; /* 100% of viewport width */
+    height: 100vh; /* 100% of viewport height */
+    object-fit: cover; /* Cover the area, might crop if aspect ratio differs */
+    z-index: 9999; /* Ensure it's on top of other elements */
+    background-color: #000; /* Optional: background color if image is transparent or doesn't load */
+  }
