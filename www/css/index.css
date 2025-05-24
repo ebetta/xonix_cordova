@@ -74,7 +74,7 @@ body {
     left: 0;
     width: 100vw; /* 100% of viewport width */
     height: 100vh; /* 100% of viewport height */
-    object-fit: cover; /* Cover the area, might crop if aspect ratio differs */
+    object-fit: contain; /* Changed from cover to contain */
     z-index: 9999; /* Ensure it's on top of other elements */
-    background-color: #000; /* Optional: background color if image is transparent or doesn't load */
+    background-color: #000; /* Ensure this is present for letterboxing */
   }
