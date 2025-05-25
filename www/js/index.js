@@ -22,6 +22,7 @@
     let elementoInfoPercentual; 
 
     let splashScreenImage;
+    let backgroundImage; // Global variable for the background image
     let splashScreenTimer = 0;
     const SPLASH_DURATION = 4000; // 4 seconds in milliseconds
 
@@ -586,14 +587,22 @@
       for (let i = 0; i < COLS; i++) {
         for (let j = 0; j < ROWS; j++) {
           if (grid[i][j] === ST_FILLED) {
-            fill(filledColor);
+            if (backgroundImage && backgroundImage.width > 0 && backgroundImage.height > 0) { // Check if the image is loaded and valid
+              image(backgroundImage, i * GRID_SIZE, j * GRID_SIZE, GRID_SIZE, GRID_SIZE, i * GRID_SIZE, j * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+            } else {
+              fill(filledColor); // Fallback if image not loaded or invalid
+              noStroke();
+              rect(i * GRID_SIZE, j * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+            }
           } else if (grid[i][j] === ST_EMPTY) {
             fill(emptyColor);
+            noStroke();
+            rect(i * GRID_SIZE, j * GRID_SIZE, GRID_SIZE, GRID_SIZE);
           } else if (grid[i][j] === ST_TRAIL) {
             fill(trailColor);
+            noStroke();
+            rect(i * GRID_SIZE, j * GRID_SIZE, GRID_SIZE, GRID_SIZE);
           }
-          noStroke();
-          rect(i * GRID_SIZE, j * GRID_SIZE, GRID_SIZE, GRID_SIZE);
         }
       }
     }
@@ -684,6 +693,8 @@
       cnv = createCanvas(canvasWidth, canvasHeight); 
       cnv.mousePressed(handleCanvasTouchStart); 
       cnv.touchStarted(handleCanvasTouchStart); 
+
+      backgroundImage = loadImage('img/fundo_01.png'); // Load the background image
 
       COLS = floor(width / GRID_SIZE);
       ROWS = floor(height / GRID_SIZE);
