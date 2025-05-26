@@ -592,8 +592,11 @@
           let dy = j * GRID_SIZE;
 
           if (grid[i][j] === ST_FILLED) {
-            // Yellow background is now handled by the main background(yellowColor) call.
-            // Only draw the image portion if valid.
+            // Draw yellow underlay for ST_FILLED cells
+            fill(yellowColor); 
+            rect(dx, dy, GRID_SIZE, GRID_SIZE);
+
+            // Only draw the image portion if valid, on top of the yellow.
             if (backgroundImage && backgroundImage.width > 0 && backgroundImage.height > 0) {
                 let sx = i * GRID_SIZE;
                 let sy = j * GRID_SIZE;
@@ -617,10 +620,11 @@
             // If backgroundImage is not loaded or invalid, the main yellow background shows through.
             
           } else if (grid[i][j] === ST_EMPTY) {
-            // No drawing needed for ST_EMPTY cells; they are part of the yellow background.
+            // ST_EMPTY cells are drawn with their specific color (dark blue/grey)
+            fill(emptyColor);
+            rect(dx, dy, GRID_SIZE, GRID_SIZE);
           } else if (grid[i][j] === ST_TRAIL) {
-            // Yellow background is now handled by the main background(yellowColor) call.
-            // Only draw the trail color.
+            // ST_TRAIL cells are drawn with their specific color
             fill(trailColor); 
             rect(dx, dy, GRID_SIZE, GRID_SIZE);
           }
@@ -737,7 +741,7 @@
       
       yellowColor = color(255, 255, 0); // Define yellow
       filledColor = color(50, 50, 70);
-      emptyColor = yellowColor; // Empty cells are yellow
+      emptyColor = color(10, 10, 20); // Reverted to original dark blue/grey
       
       angleMode(RADIANS); 
       setupTouchControls(); 
@@ -770,7 +774,7 @@
         if (currentTouchButtonDirection.dx !== 0 || currentTouchButtonDirection.dy !== 0) {
             player.setDirection(currentTouchButtonDirection.dx, currentTouchButtonDirection.dy);
         }
-        background(yellowColor); // Main background is now yellow
+        background(0); // Reverted to original black background
         drawGrid();
         player.update(); 
         player.draw();
