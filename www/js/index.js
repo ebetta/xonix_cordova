@@ -22,7 +22,7 @@
     let elementoInfoPercentual; 
 
     let splashScreenImage;
-    let backgroundImage; // Global variable for the background image
+    let backgroundImage = null; // Initialize to null for better checking
     let splashScreenTimer = 0;
     const SPLASH_DURATION = 4000; // 4 seconds in milliseconds
 
@@ -49,6 +49,7 @@
     let trailColor;
     let filledColor;
     let emptyColor;
+    let yellowColor; // For background underlay
 
     // --- Classe do Jogador ---
     class Player {
@@ -584,24 +585,44 @@
     }
 
     function drawGrid() {
+      noStroke(); // Call noStroke once for the entire grid drawing
       for (let i = 0; i < COLS; i++) {
         for (let j = 0; j < ROWS; j++) {
+          let dx = i * GRID_SIZE;
+          let dy = j * GRID_SIZE;
+
           if (grid[i][j] === ST_FILLED) {
-            if (backgroundImage && backgroundImage.width > 0 && backgroundImage.height > 0) { // Check if the image is loaded and valid
-              image(backgroundImage, i * GRID_SIZE, j * GRID_SIZE, GRID_SIZE, GRID_SIZE, i * GRID_SIZE, j * GRID_SIZE, GRID_SIZE, GRID_SIZE);
-            } else {
-              fill(filledColor); // Fallback if image not loaded or invalid
-              noStroke();
-              rect(i * GRID_SIZE, j * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+            // Yellow background is now handled by the main background(yellowColor) call.
+            // Only draw the image portion if valid.
+            if (backgroundImage && backgroundImage.width > 0 && backgroundImage.height > 0) {
+                let sx = i * GRID_SIZE;
+                let sy = j * GRID_SIZE;
+                let sWidth = GRID_SIZE;
+                let sHeight = GRID_SIZE;
+
+                if (sx < backgroundImage.width && sy < backgroundImage.height) { 
+                  if (sx + sWidth > backgroundImage.width) {
+                    sWidth = backgroundImage.width - sx;
+                  }
+                  if (sy + sHeight > backgroundImage.height) {
+                    sHeight = backgroundImage.height - sy;
+                  }
+                  if (sWidth > 0 && sHeight > 0) {
+                    image(backgroundImage, dx, dy, GRID_SIZE, GRID_SIZE, sx, sy, sWidth, sHeight);
+                  }
+                  // If image portion is not drawn, the main yellow background shows through.
+                }
+                // If sx, sy are initially out of bounds, the main yellow background shows through.
             }
+            // If backgroundImage is not loaded or invalid, the main yellow background shows through.
+            
           } else if (grid[i][j] === ST_EMPTY) {
-            fill(emptyColor);
-            noStroke();
-            rect(i * GRID_SIZE, j * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+            // No drawing needed for ST_EMPTY cells; they are part of the yellow background.
           } else if (grid[i][j] === ST_TRAIL) {
-            fill(trailColor);
-            noStroke();
-            rect(i * GRID_SIZE, j * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+            // Yellow background is now handled by the main background(yellowColor) call.
+            // Only draw the trail color.
+            fill(trailColor); 
+            rect(dx, dy, GRID_SIZE, GRID_SIZE);
           }
         }
       }
@@ -694,7 +715,18 @@
       cnv.mousePressed(handleCanvasTouchStart); 
       cnv.touchStarted(handleCanvasTouchStart); 
 
-      backgroundImage = loadImage('img/fundo_01.png'); // Load the background image
+      console.log("Attempting to load image: img/fundo_01.png");
+      backgroundImage = loadImage(
+        'img/fundo_01.png',
+        img => {
+          console.log('Background image loaded successfully:', img.width, 'x', img.height);
+          backgroundImage = img; // Ensure the global variable is updated here
+        },
+        err => {
+          console.error('Failed to load background image:', err);
+          backgroundImage = null; // Explicitly set to null on error
+        }
+      );
 
       COLS = floor(width / GRID_SIZE);
       ROWS = floor(height / GRID_SIZE);
@@ -703,8 +735,9 @@
       playerColor = color(playerBaseColor[0], playerBaseColor[1], playerBaseColor[2]);
       trailColor = color(playerBaseColor[0], playerBaseColor[1], playerBaseColor[2], 100);
       
+      yellowColor = color(255, 255, 0); // Define yellow
       filledColor = color(50, 50, 70);
-      emptyColor = color(10, 10, 20);
+      emptyColor = yellowColor; // Empty cells are yellow
       
       angleMode(RADIANS); 
       setupTouchControls(); 
@@ -737,7 +770,7 @@
         if (currentTouchButtonDirection.dx !== 0 || currentTouchButtonDirection.dy !== 0) {
             player.setDirection(currentTouchButtonDirection.dx, currentTouchButtonDirection.dy);
         }
-        background(0); 
+        background(yellowColor); // Main background is now yellow
         drawGrid();
         player.update(); 
         player.draw();
