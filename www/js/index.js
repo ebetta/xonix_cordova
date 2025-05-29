@@ -51,6 +51,13 @@
     let emptyColor;
     let yellowColor; // For background underlay
 
+    // Background Image Transform Variables
+    let imageScale = 1;
+    let scaledImageWidth = 0;
+    let scaledImageHeight = 0;
+    let imageOffsetX = 0;
+    let imageOffsetY = 0;
+
     // --- Classe do Jogador ---
     class Player {
       constructor(x, y) {
@@ -596,28 +603,57 @@
             fill(yellowColor); 
             rect(dx, dy, GRID_SIZE, GRID_SIZE);
 
-            // Only draw the image portion if valid, on top of the yellow.
-            if (backgroundImage && backgroundImage.width > 0 && backgroundImage.height > 0) {
-                let sx = i * GRID_SIZE;
-                let sy = j * GRID_SIZE;
-                let sWidth = GRID_SIZE;
-                let sHeight = GRID_SIZE;
+            if (backgroundImage && backgroundImage.width > 0 && backgroundImage.height > 0 && imageScale > 0) {
+                let targetCanvasX = i * GRID_SIZE;
+                let targetCanvasY = j * GRID_SIZE;
+                let targetCanvasWidth = GRID_SIZE;
+                let targetCanvasHeight = GRID_SIZE;
 
-                if (sx < backgroundImage.width && sy < backgroundImage.height) { 
-                  if (sx + sWidth > backgroundImage.width) {
-                    sWidth = backgroundImage.width - sx;
-                  }
-                  if (sy + sHeight > backgroundImage.height) {
-                    sHeight = backgroundImage.height - sy;
-                  }
-                  if (sWidth > 0 && sHeight > 0) {
-                    image(backgroundImage, dx, dy, GRID_SIZE, GRID_SIZE, sx, sy, sWidth, sHeight);
-                  }
-                  // If image portion is not drawn, the main yellow background shows through.
+                // sx, sy, sWidth, sHeight are from the *original* unscaled backgroundImage
+                let sx = (targetCanvasX - imageOffsetX) / imageScale;
+                let sy = (targetCanvasY - imageOffsetY) / imageScale;
+                let sWidth = targetCanvasWidth / imageScale;
+                let sHeight = targetCanvasHeight / imageScale;
+
+                // Check if the cell is outside the visible area of the scaled, centered image
+                // or if the source width/height is non-positive.
+                if (targetCanvasX + targetCanvasWidth < imageOffsetX || // Cell is to the left of the image
+                    targetCanvasX > imageOffsetX + scaledImageWidth ||  // Cell is to the right of the image
+                    targetCanvasY + targetCanvasHeight < imageOffsetY || // Cell is above the image
+                    targetCanvasY > imageOffsetY + scaledImageHeight || // Cell is below the image
+                    sWidth <= 0 || sHeight <= 0) {
+                    // This cell is outside the actual scaled image bounds on canvas,
+                    // or the source dimensions are invalid. So, do nothing, leave it yellow.
+                    // console.log(`Cell ${i},${j} is outside image bounds or invalid source size. Stays yellow.`);
+                } else {
+                    // Further checks for sx, sy, sWidth, sHeight against original image dimensions
+                    if (sx < 0) {
+                        sWidth += sx; // Reduce width by the amount sx is negative (sx is negative)
+                        sx = 0;
+                    }
+                    if (sy < 0) {
+                        sHeight += sy; // Reduce height by the amount sy is negative (sy is negative)
+                        sy = 0;
+                    }
+
+                    if (sx + sWidth > backgroundImage.width) {
+                        sWidth = backgroundImage.width - sx;
+                    }
+                    if (sy + sHeight > backgroundImage.height) {
+                        sHeight = backgroundImage.height - sy;
+                    }
+
+                    // Only draw if the adjusted source width/height are still positive
+                    if (sWidth > 0 && sHeight > 0) {
+                        image(backgroundImage, 
+                              dx, dy, targetCanvasWidth, targetCanvasHeight, // Destination on canvas
+                              sx, sy, sWidth, sHeight);                    // Source from original image
+                    } else {
+                        // console.log(`Cell ${i},${j} has zero/negative adjusted source. Stays yellow.`);
+                    }
                 }
-                // If sx, sy are initially out of bounds, the main yellow background shows through.
             }
-            // If backgroundImage is not loaded or invalid, the main yellow background shows through.
+            // If backgroundImage is not loaded/valid or imageScale is invalid, the cell remains yellow.
             
           } else if (grid[i][j] === ST_EMPTY) {
             // ST_EMPTY cells are drawn with their specific color (dark blue/grey)
@@ -630,6 +666,39 @@
           }
         }
       }
+    }
+
+    function calculateBackgroundImageTransform() {
+      if (!backgroundImage || backgroundImage.width === 0 || backgroundImage.height === 0) {
+        console.log("calculateBackgroundImageTransform: backgroundImage not loaded or invalid.");
+        return;
+      }
+
+      let canvasWidth = width; // p5.js global for canvas width
+      let canvasHeight = height; // p5.js global for canvas height
+
+      let imageAspect = backgroundImage.width / backgroundImage.height;
+      let canvasAspect = canvasWidth / canvasHeight;
+
+      if (imageAspect > canvasAspect) {
+        // Image is wider relative to canvas, fit by width
+        imageScale = canvasWidth / backgroundImage.width;
+      } else {
+        // Image is taller relative to canvas (or same aspect), fit by height
+        imageScale = canvasHeight / backgroundImage.height;
+      }
+
+      scaledImageWidth = backgroundImage.width * imageScale;
+      scaledImageHeight = backgroundImage.height * imageScale;
+
+      imageOffsetX = (canvasWidth - scaledImageWidth) / 2;
+      imageOffsetY = (canvasHeight - scaledImageHeight) / 2;
+
+      console.log("Calculated background image transform:", {
+          imageScale, scaledImageWidth, scaledImageHeight, imageOffsetX, imageOffsetY,
+          canvasWidth, canvasHeight,
+          imgActualWidth: backgroundImage.width, imgActualHeight: backgroundImage.height
+      });
     }
 
     function resetGame() {
@@ -724,7 +793,8 @@
         'img/fundo_01.png',
         img => {
           console.log('Background image loaded successfully:', img.width, 'x', img.height);
-          backgroundImage = img; // Ensure the global variable is updated here
+          backgroundImage = img; // Assign to global
+          calculateBackgroundImageTransform(); // Call here
         },
         err => {
           console.error('Failed to load background image:', err);
@@ -988,4 +1058,5 @@
         COLS = floor(width / GRID_SIZE);
         ROWS = floor(height / GRID_SIZE);
         resetGame();
+        calculateBackgroundImageTransform(); // Call after resize and game reset
     }
