@@ -680,12 +680,17 @@
       let imageAspect = backgroundImage.width / backgroundImage.height;
       let canvasAspect = canvasWidth / canvasHeight;
 
+      // To make the image cover the canvas, we need to pick the larger scale factor.
+      // If the image is wider than the canvas aspect ratio, scaling to fit the height will make it cover.
+      // If the image is taller than the canvas aspect ratio, scaling to fit the width will make it cover.
       if (imageAspect > canvasAspect) {
-        // Image is wider relative to canvas, fit by width
-        imageScale = canvasWidth / backgroundImage.width;
-      } else {
-        // Image is taller relative to canvas (or same aspect), fit by height
+        // Image aspect ratio is wider than canvas aspect ratio.
+        // To cover, the image's height must match the canvas's height.
         imageScale = canvasHeight / backgroundImage.height;
+      } else {
+        // Image aspect ratio is taller than or equal to canvas aspect ratio.
+        // To cover, the image's width must match the canvas's width.
+        imageScale = canvasWidth / backgroundImage.width;
       }
 
       scaledImageWidth = backgroundImage.width * imageScale;
