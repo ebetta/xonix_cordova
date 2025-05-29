@@ -610,10 +610,26 @@
                 let targetCanvasHeight = GRID_SIZE;
 
                 // sx, sy, sWidth, sHeight are from the *original* unscaled backgroundImage
-                let sx = (targetCanvasX - imageOffsetX) / imageScale;
-                let sy = (targetCanvasY - imageOffsetY) / imageScale;
-                let sWidth = targetCanvasWidth / imageScale;
-                let sHeight = targetCanvasHeight / imageScale;
+                let sx_before_clip = (targetCanvasX - imageOffsetX) / imageScale;
+                let sy_before_clip = (targetCanvasY - imageOffsetY) / imageScale;
+                let sWidth_before_clip = targetCanvasWidth / imageScale;
+                let sHeight_before_clip = targetCanvasHeight / imageScale;
+
+                if ( (i === 0 && j === 0) || (i === 1 && j === 1) || (i === Math.floor(COLS/2) && j === Math.floor(ROWS/2)) ) {
+                    console.log(`--- Debugging drawGrid cell[${i}][${j}] ---`);
+                    console.log(`Canvas Cell (targetCanvasX,Y): ${targetCanvasX}, ${targetCanvasY}`);
+                    console.log(`imageOffset (X,Y): ${imageOffsetX}, ${imageOffsetY}`);
+                    console.log(`scaledImage (W,H): ${scaledImageWidth}, ${scaledImageHeight}`);
+                    console.log(`imageScale: ${imageScale}`);
+                    console.log(`originalImage (W,H): ${backgroundImage.width}, ${backgroundImage.height}`);
+                    console.log(`Pre-clip (sx,sy): ${sx_before_clip}, ${sy_before_clip}`);
+                    console.log(`Pre-clip (sWidth,sHeight): ${sWidth_before_clip}, ${sHeight_before_clip}`);
+                }
+
+                let sx = sx_before_clip;
+                let sy = sy_before_clip;
+                let sWidth = sWidth_before_clip;
+                let sHeight = sHeight_before_clip;
 
                 // Check if the cell is outside the visible area of the scaled, centered image
                 // or if the source width/height is non-positive.
@@ -624,7 +640,9 @@
                     sWidth <= 0 || sHeight <= 0) {
                     // This cell is outside the actual scaled image bounds on canvas,
                     // or the source dimensions are invalid. So, do nothing, leave it yellow.
-                    // console.log(`Cell ${i},${j} is outside image bounds or invalid source size. Stays yellow.`);
+                    if ( (i === 0 && j === 0) || (i === 1 && j === 1) || (i === Math.floor(COLS/2) && j === Math.floor(ROWS/2)) ) {
+                        console.log(`Cell [${i}][${j}] determined to be outside image bounds or sWidth/sHeight <=0 initially. Remains yellow.`);
+                    }
                 } else {
                     // Further checks for sx, sy, sWidth, sHeight against original image dimensions
                     if (sx < 0) {
@@ -645,11 +663,17 @@
 
                     // Only draw if the adjusted source width/height are still positive
                     if (sWidth > 0 && sHeight > 0) {
+                        if ( (i === 0 && j === 0) || (i === 1 && j === 1) || (i === Math.floor(COLS/2) && j === Math.floor(ROWS/2)) ) {
+                            console.log(`Post-clip (sx,sy): ${sx}, ${sy}`);
+                            console.log(`Post-clip (sWidth,sHeight): ${sWidth}, ${sHeight}`);
+                        }
                         image(backgroundImage, 
                               dx, dy, targetCanvasWidth, targetCanvasHeight, // Destination on canvas
                               sx, sy, sWidth, sHeight);                    // Source from original image
                     } else {
-                        // console.log(`Cell ${i},${j} has zero/negative adjusted source. Stays yellow.`);
+                        if ( (i === 0 && j === 0) || (i === 1 && j === 1) || (i === Math.floor(COLS/2) && j === Math.floor(ROWS/2)) ) {
+                            console.log(`Cell [${i}][${j}] sWidth or sHeight became <=0 after clipping. sx:${sx}, sy:${sy}, sW:${sWidth}, sH:${sHeight}. Stays yellow.`);
+                        }
                     }
                 }
             }
@@ -680,17 +704,12 @@
       let imageAspect = backgroundImage.width / backgroundImage.height;
       let canvasAspect = canvasWidth / canvasHeight;
 
-      // To make the image cover the canvas, we need to pick the larger scale factor.
-      // If the image is wider than the canvas aspect ratio, scaling to fit the height will make it cover.
-      // If the image is taller than the canvas aspect ratio, scaling to fit the width will make it cover.
       if (imageAspect > canvasAspect) {
-        // Image aspect ratio is wider than canvas aspect ratio.
-        // To cover, the image's height must match the canvas's height.
-        imageScale = canvasHeight / backgroundImage.height;
-      } else {
-        // Image aspect ratio is taller than or equal to canvas aspect ratio.
-        // To cover, the image's width must match the canvas's width.
+        // Image is wider relative to canvas, fit by width
         imageScale = canvasWidth / backgroundImage.width;
+      } else {
+        // Image is taller relative to canvas (or same aspect), fit by height
+        imageScale = canvasHeight / backgroundImage.height;
       }
 
       scaledImageWidth = backgroundImage.width * imageScale;
