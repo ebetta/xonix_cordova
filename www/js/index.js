@@ -57,6 +57,7 @@
     let scaledImageHeight = 0;
     let imageOffsetX = 0;
     let imageOffsetY = 0;
+    let isBackgroundImageTransformReady = false;
 
     // --- Classe do Jogador ---
     class Player {
@@ -603,7 +604,7 @@
             fill(yellowColor); 
             rect(dx, dy, GRID_SIZE, GRID_SIZE);
 
-            if (backgroundImage && backgroundImage.width > 0 && backgroundImage.height > 0 && imageScale > 0) {
+            if (isBackgroundImageTransformReady && backgroundImage && backgroundImage.width > 0 && backgroundImage.height > 0) {
                 let targetCanvasX = i * GRID_SIZE;
                 let targetCanvasY = j * GRID_SIZE;
                 let targetCanvasWidth = GRID_SIZE;
@@ -693,6 +694,7 @@
     }
 
     function calculateBackgroundImageTransform() {
+      isBackgroundImageTransformReady = false;
       if (!backgroundImage || backgroundImage.width === 0 || backgroundImage.height === 0) {
         console.log("calculateBackgroundImageTransform: backgroundImage not loaded or invalid.");
         return;
@@ -723,6 +725,7 @@
           canvasWidth, canvasHeight,
           imgActualWidth: backgroundImage.width, imgActualHeight: backgroundImage.height
       });
+      isBackgroundImageTransformReady = true;
     }
 
     function resetGame() {
@@ -761,6 +764,7 @@
         enemies.push(new Enemy(enemyStartX, enemyStartY)); 
       }
       gameState = 'playing';
+      calculateBackgroundImageTransform(); // Ensure transform is calculated with latest dimensions
     }
 
     function gameOver() {
@@ -1057,6 +1061,7 @@
 
 
     function windowResized() {
+        isBackgroundImageTransformReady = false; // Reset flag on resize
         // *** AJUSTE NO CÁLCULO DA ALTURA DO CANVAS PARA MAXIMIZAR ÁREA ÚTIL ***
         const infoElem = document.getElementById('info-percentual');
         const dPadElem = document.getElementById('touch-controls');
