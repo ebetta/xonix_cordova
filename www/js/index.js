@@ -23,6 +23,8 @@
 
     let splashScreenImage;
     let backgroundImage = null; // Initialize to null for better checking
+    // let caterpillarImage; // Removed in favor of directional images
+    let caterpillarUpImage, caterpillarDownImage, caterpillarLeftImage, caterpillarRightImage;
     let splashScreenTimer = 0;
     const SPLASH_DURATION = 4000; // 4 seconds in milliseconds
 
@@ -69,6 +71,8 @@
         this.trailPath = []; 
         this.moveCooldown = 0;
         this.moveInterval = 5; 
+        // this.currentAngle = 0; // Removed, using currentImage now
+        this.currentImage = caterpillarUpImage; // Default to up image
       }
 
       setDirection(dx, dy) {
@@ -151,9 +155,28 @@
       }
 
       draw() {
-        fill(playerColor);
         noStroke();
-        rect(this.x * GRID_SIZE, this.y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+
+        // Determine current image based on direction
+        if (this.dy === -1) { // Up
+            this.currentImage = caterpillarUpImage;
+        } else if (this.dy === 1) { // Down
+            this.currentImage = caterpillarDownImage;
+        } else if (this.dx === -1) { // Left
+            this.currentImage = caterpillarLeftImage;
+        } else if (this.dx === 1) { // Right
+            this.currentImage = caterpillarRightImage;
+        }
+        // If not moving (dx and dy are 0), currentImage remains as the last direction's image.
+        // This also means if it started as caterpillarUpImage (from constructor) and hasn't moved, it stays that.
+
+        if (this.currentImage && this.currentImage.width > 0) {
+          image(this.currentImage, this.x * GRID_SIZE, this.y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+        } else {
+          // Fallback: Draw original rectangle if image isn't loaded or currentImage is null
+          fill(playerColor);
+          rect(this.x * GRID_SIZE, this.y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+        }
       }
     }
 
@@ -824,6 +847,36 @@
           console.error('Failed to load background image:', err);
           backgroundImage = null; // Explicitly set to null on error
         }
+      );
+
+      // Remove old caterpillarImage loading
+      // console.log("Attempting to load image: www/img/cima_trasp2.png");
+      // caterpillarImage = loadImage(
+      //   'img/cima_trasp2.png', // Path relative to www/ or where index.html is
+      //   img => {
+      //     console.log('Caterpillar image loaded successfully. Width:', img.width);
+      //   },
+      //   err => {
+      //     console.error('Error loading caterpillar image:', err);
+      //     caterpillarImage = null; // Explicitly set to null on error
+      //   }
+      // );
+
+      caterpillarUpImage = loadImage('img/cima.png',
+        img => console.log('Caterpillar Up image loaded successfully. Width:', img.width),
+        err => console.error('Error loading Caterpillar Up image:', err)
+      );
+      caterpillarDownImage = loadImage('img/baixo.png',
+        img => console.log('Caterpillar Down image loaded successfully. Width:', img.width),
+        err => console.error('Error loading Caterpillar Down image:', err)
+      );
+      caterpillarLeftImage = loadImage('img/esquerda.png',
+        img => console.log('Caterpillar Left image loaded successfully. Width:', img.width),
+        err => console.error('Error loading Caterpillar Left image:', err)
+      );
+      caterpillarRightImage = loadImage('img/direita.png',
+        img => console.log('Caterpillar Right image loaded successfully. Width:', img.width),
+        err => console.error('Error loading Caterpillar Right image:', err)
       );
 
       COLS = floor(width / GRID_SIZE);
