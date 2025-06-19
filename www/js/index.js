@@ -573,10 +573,13 @@
         } else { // General logic for non-border closures
             console.log("[completeAreaFill-General] Non-BorderClosure general logic activated.");
 
-            // START OF GENERAL LOGIC BLOCK (as implemented in prior steps)
-            for (let p_data of trailPathFromPlayer) { /* Temp mark trail ST_FILLED */ grid[p_data.x][p_data.y] = ST_FILLED; }
+            // Temporarily mark all cells in the current path as ST_FILLED for boundary detection
+            for (let p_data of trailPathFromPlayer) {
+                grid[p_data.x][p_data.y] = ST_FILLED;
+            }
+
             let fillCandidates = [];
-            for (let i = 0; i < trailPathFromPlayer.length -1; i++) { /* ... generate fillCandidates ... */
+            for (let i = 0; i < trailPathFromPlayer.length -1; i++) {
                 const p1 = trailPathFromPlayer[i]; const p2 = trailPathFromPlayer[i+1];
                 let dx = p2.x-p1.x; let dy = p2.y-p1.y; let s1x,s1y,s2x,s2y;
                 s1x=p1.x-dy;s1y=p1.y+dx; s2x=p1.x+dy;s2y=p1.y-dx;
@@ -585,92 +588,95 @@
                 if(isValidForFillStart(s1x,s1y))fillCandidates.push({x:s1x,y:s1y}); if(isValidForFillStart(s2x,s2y))fillCandidates.push({x:s2x,y:s2y});
             }
             fillCandidates=fillCandidates.filter((item,idx,self)=>idx===self.findIndex(t=>t.x===item.x && t.y===item.y));
-            let potentialAreas=[]; let visitedCandCells=new Set();
+
+            // Collect ONLY 'emptyRegion' types into potentialAreas for filling
+            let potentialAreasOnlyEmptyRegions = [];
+            let visitedCandCells=new Set();
             for(let cand of fillCandidates){
-                const candKey=`${cand.x},${cand.y}`; if(visitedCandCells.has(candKey)||grid[cand.x][cand.y]!==ST_EMPTY)continue;
+                const candKey=`${cand.x},${cand.y}`;
+                if(visitedCandCells.has(candKey) || !(grid[cand.x] && grid[cand.x][cand.y] === ST_EMPTY) ){ // Added grid[cand.x] check and ensure it's ST_EMPTY
+                    continue;
+                }
                 let areaCells=getAreaIfFilled(cand.x,cand.y,ST_EMPTY);
-                if(areaCells.length>0){potentialAreas.push({areaCells:areaCells,size:areaCells.length,type:'emptyRegion',candidateStartCell:cand}); areaCells.forEach(cell=>visitedCandCells.add(`${cell.x},${cell.y}`));}
-            }
-            let trailGenN=[]; for(let p_data of trailPathFromPlayer){if(p_data.originalStateGridBeforeTrail===ST_EMPTY)trailGenN.push({x:p_data.x,y:p_data.y});}
-            if(trailGenN.length>0){potentialAreas.push({areaCells:trailGenN,size:trailGenN.length,type:'trailItself',candidateStartCell:null});}
-
-            // NEW REFINED SELECTION LOGIC:
-            console.log("[completeAreaFill-General] Raw potentialAreas for selection:", JSON.stringify(potentialAreas.map(p => ({type: p.type, size: p.size }))));
-            let chosenAreaGen = null;
-            if (potentialAreas.length > 0) {
-                const emptyRegions = potentialAreas.filter(p => p.type === 'emptyRegion');
-
-                if (emptyRegions.length > 0) {
-                    emptyRegions.sort((a, b) => a.size - b.size); // Sort empty regions by size
-                    if (emptyRegions.length === 1) {
-                        chosenAreaGen = emptyRegions[0];
-                        console.log("[completeAreaFill-General] Selected single available emptyRegion. Size:", chosenAreaGen.size);
-                    } else {
-                        chosenAreaGen = emptyRegions[0];
-                        console.log("[completeAreaFill-General] Multiple emptyRegions found. Selected smallest. Size:", chosenAreaGen.size);
-                    }
-                } else {
-                    const trailItselfCand = potentialAreas.find(p => p.type === 'trailItself');
-                    if (trailItselfCand) {
-                        chosenAreaGen = trailItselfCand;
-                        console.log("[completeAreaFill-General] No emptyRegions found. Selected 'trailItself' as fallback. Size:", chosenAreaGen.size);
-                    } else {
-                        console.log("[completeAreaFill-General] No emptyRegions and no trailItself found in potentialAreas. No area can be chosen.");
-                        chosenAreaGen = null;
-                    }
+                if(areaCells.length>0){
+                    potentialAreasOnlyEmptyRegions.push({areaCells:areaCells,size:areaCells.length,type:'emptyRegion',candidateStartCell:cand});
+                    areaCells.forEach(cell=>visitedCandCells.add(`${cell.x},${cell.y}`));
                 }
             }
-            // END OF NEW REFINED SELECTION LOGIC
 
-            // This log should be AFTER chosenAreaGen is decided by new logic
-            if(chosenAreaGen)console.log("[completeAreaFill-General] chosenArea AFTER refined selection: type:",chosenAreaGen.type,"size:",chosenAreaGen.size);
-            else console.log("[completeAreaFill-General] chosenAreaGen is null AFTER refined selection.");
+            // Calculate trailItselfGeneral's size for the heuristic, but it's NOT a fill candidate itself here.
+            let trailItselfGenSize = 0;
+            let tempTrailItselfCells = []; // Not strictly needed if only size is required for heuristic
+            for(let p_data of trailPathFromPlayer){
+                if(p_data.originalStateGridBeforeTrail === ST_EMPTY) tempTrailItselfCells.push({x:p_data.x,y:p_data.y});
+            }
+            trailItselfGenSize = tempTrailItselfCells.length; // Get the size
+
+            console.log("[completeAreaFill-General] trailItselfGeneral (for heuristic only) calculated size:", trailItselfGenSize);
+            console.log("[completeAreaFill-General] potentialAreas (only emptyRegions found):",JSON.stringify(potentialAreasOnlyEmptyRegions.map(p=>({type:p.type,size:p.size}))));
+
+            let chosenAreaGen=null;
+            if (potentialAreasOnlyEmptyRegions.length > 0) {
+                if (potentialAreasOnlyEmptyRegions.length === 1) {
+                    let singleRegion = potentialAreasOnlyEmptyRegions[0];
+                    // Check if this single region is very large (likely the exterior)
+                    // Use a threshold, e.g., 60% of totalFillableCells
+                    if (totalFillableCells > 0 && (singleRegion.size / totalFillableCells) > 0.60) {
+                        console.log("[completeAreaFill-General] Single emptyRegion found, and it's very large (size " + singleRegion.size + "). Assuming it's exterior, no fill.");
+                        chosenAreaGen = null; // Treat as no new area enclosed
+                    } else {
+                        // Single region is not excessively large, so consider it a valid fill area
+                        chosenAreaGen = singleRegion;
+                        console.log("[completeAreaFill-General] Selected single available emptyRegion (not excessively large). Size:", chosenAreaGen.size);
+                    }
+                } else { // Multiple emptyRegions found
+                    potentialAreasOnlyEmptyRegions.sort((a, b) => a.size - b.size);
+                    chosenAreaGen = potentialAreasOnlyEmptyRegions[0]; // Smallest is assumed to be the desired interior
+                    console.log("[completeAreaFill-General] Multiple emptyRegions found. Selected smallest. Size:", chosenAreaGen.size);
+                }
+            } else {
+               console.log("[completeAreaFill-General] No emptyRegions found. No area can be chosen for fill by this path.");
+               chosenAreaGen = null;
+            }
+
+            if(chosenAreaGen)console.log("[completeAreaFill-General] chosenAreaGen AFTER selection: type:",chosenAreaGen.type,"size:",chosenAreaGen.size);
+            else console.log("[completeAreaFill-General] chosenAreaGen is null AFTER selection (no suitable empty regions found/chosen).");
 
             let heuristicPreventedFillGen=false;
-            if(chosenAreaGen && chosenAreaGen.type==='emptyRegion' && totalFillableCells>0){
-                if((chosenAreaGen.size/totalFillableCells)>0.30){
-                    const trailCandGen=potentialAreas.find(p=>p.type==='trailItself');
-                    if(trailCandGen && trailCandGen.size > chosenAreaGen.size){
-                        console.log("[completeAreaFill-General] Heuristic: Main field (size "+chosenAreaGen.size+") chosen due to long trail (size "+trailCandGen.size+"). Preventing fill.");
+            if(chosenAreaGen && chosenAreaGen.type==='emptyRegion' && totalFillableCells > 0){ // chosenAreaGen will always be 'emptyRegion' if not null
+                const ratio = chosenAreaGen.size / totalFillableCells;
+                if(ratio > 0.30){
+                    if(trailItselfGenSize > chosenAreaGen.size){
+                        console.log("[completeAreaFill-General] Heuristic: Main field (size "+chosenAreaGen.size+") chosen due to long trail (size "+trailItselfGenSize+"). Preventing fill.");
                         heuristicPreventedFillGen=true;
                     }
                 }
             }
-            if(!heuristicPreventedFillGen && chosenAreaGen && chosenAreaGen.size>0){
-                if(chosenAreaGen.type==='trailItself'){
-                    for(let cell of chosenAreaGen.areaCells){grid[cell.x][cell.y]=ST_FILLED;score++;}
-                    filledSuccessfully=true; finalCellsForEnemyRemoval=chosenAreaGen.areaCells; // Use this for general path
-                    console.log("[completeAreaFill-General] Filled 'trailItself'. Size:",chosenAreaGen.size);
-            } else { // emptyRegion - THIS BLOCK IS MODIFIED
+
+            if(!heuristicPreventedFillGen && chosenAreaGen && chosenAreaGen.size>0){ // chosenAreaGen here MUST be of type 'emptyRegion'
                 console.log("[completeAreaFill-General] Attempting to directly fill 'emptyRegion' of size:", chosenAreaGen.size);
                 if (chosenAreaGen.areaCells && chosenAreaGen.areaCells.length > 0) {
                     for (let cell of chosenAreaGen.areaCells) {
-                        // Ensure cell is not outside grid boundaries, though getAreaIfFilled should prevent this.
                         if (cell.x >= 0 && cell.x < COLS && cell.y >= 0 && cell.y < ROWS) {
-                            if (grid[cell.x][cell.y] === ST_EMPTY) { // Fill only if truly empty; score only for these
-                                grid[cell.x][cell.y] = ST_FILLED;
-                                score++;
+                            if (grid[cell.x][cell.y] === ST_EMPTY) {
+                                grid[cell.x][cell.y] = ST_FILLED; score++;
                             } else if (grid[cell.x][cell.y] === ST_FILLED) {
-                                // If it was already ST_FILLED (e.g. part of the trail path that was temp marked),
-                                // it should remain ST_FILLED, but not re-scored.
                                 grid[cell.x][cell.y] = ST_FILLED;
                             }
                         }
                     }
-                    filledSuccessfully = true;
-                    finalCellsForEnemyRemoval = chosenAreaGen.areaCells;
-                    console.log("[completeAreaFill-General] Directly filled 'emptyRegion'. Actual cells processed for fill:", chosenAreaGen.areaCells.length, "New score:", score);
+                    filledSuccessfully=true; finalCellsForEnemyRemoval=chosenAreaGen.areaCells;
+                    console.log("[completeAreaFill-General] Directly filled 'emptyRegion'. Cells processed:", chosenAreaGen.areaCells.length, "New score:", score);
                 } else {
-                    console.log("[completeAreaFill-General] Error: 'emptyRegion' (size " + chosenAreaGen.size + ") has no areaCells or areaCells is empty.");
-                    filledSuccessfully = false;
+                    console.log("[completeAreaFill-General] Error: 'emptyRegion' (size "+chosenAreaGen.size+") has empty/null areaCells.");
+                    filledSuccessfully=false;
                 }
-                }
-            }else{
-            if(heuristicPreventedFillGen)console.log("[completeAreaFill-General] Heuristic prevented fill."); else console.log("[completeAreaFill-General] No valid chosenArea or size is 0, or other fill failure.");
+            } else {
+                if(heuristicPreventedFillGen)console.log("[completeAreaFill-General] Heuristic prevented fill.");
+                else console.log("[completeAreaFill-General] No valid chosenArea for fill, or size is 0, or other fill failure in general path.");
                 filledSuccessfully=false;
             }
-            // END OF GENERAL LOGIC BLOCK (sets filledSuccessfully and finalCellsForEnemyRemoval if successful)
-        }
+        } // End general logic
 
         // Common Post-Fill Logic
         if (filledSuccessfully && finalCellsForEnemyRemoval && finalCellsForEnemyRemoval.length > 0) {
