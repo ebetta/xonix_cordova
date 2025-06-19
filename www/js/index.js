@@ -526,24 +526,24 @@
         floodFill(x, y - 1, targetState, replacementState);
     }
 
-    // Add isBorderClosure to the function signature
     function completeAreaFill(trailPathFromPlayer, isBorderClosure) {
-        console.log("[completeAreaFill] Called. trailPathFromPlayer.length:", trailPathFromPlayer.length, "isBorderClosure:", isBorderClosure);
+        // Ensure existing console logs (or add new ones) clearly indicate parameters
+        console.log("[completeAreaFill] Called. pathLength:", trailPathFromPlayer.length, "isBorderClosure:", isBorderClosure);
 
         if (trailPathFromPlayer.length < 3) {
             for (let p_data of trailPathFromPlayer) {
                 grid[p_data.x][p_data.y] = p_data.originalStateGridBeforeTrail;
             }
-            // console.log("[completeAreaFill] Path too short, reverted."); // Keep or adjust logs
-            checkLevelComplete(); // Call checkLevelComplete even for short paths as score might have changed elsewhere or this is end of turn
+            console.log("[completeAreaFill] Path too short, reverted.");
+            checkLevelComplete(); // Ensure this is called
             return;
         }
 
         let filledSuccessfully = false;
-        let chosenAreaForEnemyRemoval = null; // To store areaCells for enemy removal
+        let chosenAreaForEnemyRemoval = null;
 
         if (isBorderClosure) {
-            console.log("[completeAreaFill] Border closure path activated.");
+            console.log("[completeAreaFill] BorderClosure specific logic activated.");
             let trailItselfAreaCells = [];
             for (let p_data of trailPathFromPlayer) {
                 if (p_data.originalStateGridBeforeTrail === ST_EMPTY) {
@@ -552,157 +552,142 @@
             }
 
             if (trailItselfAreaCells.length > 0) {
-                console.log("[completeAreaFill] Border closure: Filling 'trailItself' area of size:", trailItselfAreaCells.length);
+                console.log("[completeAreaFill] BorderClosure: Attempting to fill 'trailItself' of size:", trailItselfAreaCells.length);
                 for (let cell of trailItselfAreaCells) {
-                    grid[cell.x][cell.y] = ST_FILLED; // Mark as filled
-                    score++; // Increment global score
+                    grid[cell.x][cell.y] = ST_FILLED;
+                    score++;
                 }
-                filledSuccessfully = true;
-                chosenAreaForEnemyRemoval = trailItselfAreaCells; // For enemy removal
-
-                // Also ensure the border parts of the trail remain ST_FILLED
+                // Ensure border segments of the trail also remain/become ST_FILLED
                 for (let p_data of trailPathFromPlayer) {
                     if (p_data.originalStateGridBeforeTrail === ST_FILLED) {
                         grid[p_data.x][p_data.y] = ST_FILLED;
                     }
                 }
+                filledSuccessfully = true;
+                chosenAreaForEnemyRemoval = trailItselfAreaCells;
+                console.log("[completeAreaFill] BorderClosure: 'trailItself' filled. Score updated.");
             } else {
-                console.log("[completeAreaFill] Border closure: 'trailItself' is empty. No fill.");
-                filledSuccessfully = false; // This will lead to trail reversion later
+                console.log("[completeAreaFill] BorderClosure: 'trailItself' is empty. No fill performed.");
+                filledSuccessfully = false;
             }
-        } else { // Not a border closure, use existing general logic (with heuristics)
-            console.log("[completeAreaFill] Non-border closure path activated (general logic).");
+        } else { // General logic for non-border closures
+            console.log("[completeAreaFill] Non-BorderClosure general logic activated.");
+
             // Temporarily mark all cells in the current path as ST_FILLED for boundary detection
             for (let p_data of trailPathFromPlayer) {
                 grid[p_data.x][p_data.y] = ST_FILLED;
             }
 
             let fillCandidates = [];
-            // ... (Standard fillCandidates generation logic as before) ...
             for (let i = 0; i < trailPathFromPlayer.length -1; i++) {
                 const p1 = trailPathFromPlayer[i];
                 const p2 = trailPathFromPlayer[i+1];
-                let dx = p2.x - p1.x;
-                let dy = p2.y - p1.y;
-                let side1X, side1Y, side2X, side2Y;
-                side1X = p1.x - dy; side1Y = p1.y + dx;
-                side2X = p1.x + dy; side2Y = p1.y - dx;
-                if (isValidForFillStart(side1X, side1Y)) fillCandidates.push({x: side1X, y: side1Y});
-                if (isValidForFillStart(side2X, side2Y)) fillCandidates.push({x: side2X, y: side2Y});
-                side1X = p2.x - dy;  side1Y = p2.y + dx;
-                side2X = p2.x + dy;  side2Y = p2.y - dx;
-                if (isValidForFillStart(side1X, side1Y)) fillCandidates.push({x: side1X, y: side1Y});
-                if (isValidForFillStart(side2X, side2Y)) fillCandidates.push({x: side2X, y: side2Y});
+                let dx = p2.x - p1.x; let dy = p2.y - p1.y;
+                let s1x,s1y,s2x,s2y;
+                s1x=p1.x-dy; s1y=p1.y+dx; s2x=p1.x+dy; s2y=p1.y-dx;
+                if(isValidForFillStart(s1x,s1y)) fillCandidates.push({x:s1x,y:s1y});
+                if(isValidForFillStart(s2x,s2y)) fillCandidates.push({x:s2x,y:s2y});
+                s1x=p2.x-dy; s1y=p2.y+dx; s2x=p2.x+dy; s2y=p2.y-dx;
+                if(isValidForFillStart(s1x,s1y)) fillCandidates.push({x:s1x,y:s1y});
+                if(isValidForFillStart(s2x,s2y)) fillCandidates.push({x:s2x,y:s2y});
             }
-            fillCandidates = fillCandidates.filter((item, index, self) =>
-                index === self.findIndex((t) => (t.x === item.x && t.y === item.y))
-            );
+            fillCandidates = fillCandidates.filter((item,idx,self) => idx === self.findIndex(t => t.x===item.x && t.y===item.y));
 
             let potentialAreas = [];
             let visitedCandidateCellsForAreaCalc = new Set();
-            for (let candidate of fillCandidates) {
-                const candidateKey = `${candidate.x},${candidate.y}`;
-                if (visitedCandidateCellsForAreaCalc.has(candidateKey) || grid[candidate.x][candidate.y] !== ST_EMPTY) {
-                    continue;
-                }
-                let areaCells = getAreaIfFilled(candidate.x, candidate.y, ST_EMPTY);
-                if (areaCells.length > 0) {
-                    potentialAreas.push({ areaCells: areaCells, size: areaCells.length, type: 'emptyRegion', candidateStartCell: candidate });
-                    areaCells.forEach(cell => visitedCandidateCellsForAreaCalc.add(`${cell.x},${cell.y}`));
+            for (let cand of fillCandidates) {
+                const candKey = `${cand.x},${cand.y}`;
+                if(visitedCandidateCellsForAreaCalc.has(candKey) || grid[cand.x][cand.y] !== ST_EMPTY) continue;
+                let areaCells = getAreaIfFilled(cand.x, cand.y, ST_EMPTY);
+                if(areaCells.length>0){
+                    potentialAreas.push({areaCells:areaCells,size:areaCells.length,type:'emptyRegion',candidateStartCell:cand});
+                    areaCells.forEach(cell=>visitedCandidateCellsForAreaCalc.add(`${cell.x},${cell.y}`));
                 }
             }
 
-            let trailItselfAreaCellsGeneral = []; // Renamed to avoid conflict
-            for (let p_data of trailPathFromPlayer) {
-                if (p_data.originalStateGridBeforeTrail === ST_EMPTY) {
-                    trailItselfAreaCellsGeneral.push({ x: p_data.x, y: p_data.y });
-                }
+            let trailItselfGen = []; // General trailItself
+            for(let p_data of trailPathFromPlayer){
+                if(p_data.originalStateGridBeforeTrail === ST_EMPTY) trailItselfGen.push({x:p_data.x,y:p_data.y});
             }
-            if (trailItselfAreaCellsGeneral.length > 0) {
-                potentialAreas.push({ areaCells: trailItselfAreaCellsGeneral, size: trailItselfAreaCellsGeneral.length, type: 'trailItself', candidateStartCell: null });
+            if(trailItselfGen.length > 0) {
+                potentialAreas.push({areaCells:trailItselfGen,size:trailItselfGen.length,type:'trailItself',candidateStartCell:null});
             }
 
             console.log("[completeAreaFill] General logic - potentialAreas:", JSON.stringify(potentialAreas.map(p => ({type: p.type, size: p.size}))));
 
             let chosenArea = null;
-            if (potentialAreas.length > 0) {
-                potentialAreas.sort((a, b) => a.size - b.size);
+            if(potentialAreas.length > 0){
+                potentialAreas.sort((a,b)=>a.size-b.size);
                 chosenArea = potentialAreas[0];
             }
 
-            if (chosenArea) { console.log("[completeAreaFill] General logic - chosenArea: type:", chosenArea.type, "size:", chosenArea.size); }
-            else { console.log("[completeAreaFill] General logic - chosenArea is null"); }
+            if(chosenArea){ console.log("[completeAreaFill] General logic - chosenArea: type:", chosenArea.type, "size:", chosenArea.size); }
+            else{ console.log("[completeAreaFill] General logic - chosenArea is null"); }
 
             let heuristicPreventedFill = false;
-            if (chosenArea && chosenArea.type === 'emptyRegion' && totalFillableCells > 0) {
-                const chosenAreaRatio = chosenArea.size / totalFillableCells;
-                if (chosenAreaRatio > 0.30) {
-                    const trailItselfCandidate = potentialAreas.find(p => p.type === 'trailItself');
-                    if (trailItselfCandidate && trailItselfCandidate.size > chosenArea.size) {
-                        console.log("[completeAreaFill] Heuristic: Main field (size " + chosenArea.size + ") chosen due to long trail (size " + trailItselfCandidate.size + "). Preventing fill.");
+            if(chosenArea && chosenArea.type === 'emptyRegion' && totalFillableCells > 0){
+                const ratio = chosenArea.size / totalFillableCells;
+                if(ratio > 0.30){
+                    const trailCand = potentialAreas.find(p=>p.type === 'trailItself');
+                    if(trailCand && trailCand.size > chosenArea.size){
+                        console.log("[completeAreaFill] Heuristic: Main field (size "+chosenArea.size+") chosen due to long trail (size "+trailCand.size+"). Preventing fill.");
                         heuristicPreventedFill = true;
                     }
                 }
             }
 
-            if (!heuristicPreventedFill && chosenArea && chosenArea.size > 0) {
-                if (chosenArea.type === 'trailItself') {
-                    for (let cell of chosenArea.areaCells) {
-                        grid[cell.x][cell.y] = ST_FILLED;
-                        score++;
-                    }
+            if(!heuristicPreventedFill && chosenArea && chosenArea.size > 0){
+                if(chosenArea.type === 'trailItself'){
+                    for(let cell of chosenArea.areaCells){grid[cell.x][cell.y]=ST_FILLED; score++;}
                     filledSuccessfully = true;
                     chosenAreaForEnemyRemoval = chosenArea.areaCells;
-                    console.log("[completeAreaFill] General logic - Filled 'trailItself' area. Size:", chosenArea.size);
-                } else { // 'emptyRegion'
-                    let startCellForFloodFill = chosenArea.candidateStartCell;
-                    if (!startCellForFloodFill || grid[startCellForFloodFill.x][startCellForFloodFill.y] !== ST_EMPTY) {
-                        startCellForFloodFill = chosenArea.areaCells.find(c => grid[c.x][c.y] === ST_EMPTY);
+                    console.log("[completeAreaFill] General logic - Filled 'trailItself'. Size:", chosenArea.size);
+                } else { // emptyRegion
+                    let startCell = chosenArea.candidateStartCell;
+                    if(!startCell || grid[startCell.x][startCell.y] !== ST_EMPTY) {
+                        startCell = chosenArea.areaCells.find(c=>grid[c.x][c.y] === ST_EMPTY);
                     }
-                    if (startCellForFloodFill) {
-                        floodFill(startCellForFloodFill.x, startCellForFloodFill.y, ST_EMPTY, ST_FILLED);
+                    if(startCell){
+                        floodFill(startCell.x,startCell.y,ST_EMPTY,ST_FILLED);
                         filledSuccessfully = true;
-                        chosenAreaForEnemyRemoval = chosenArea.areaCells; // floodFill doesn't return cells, so use original list
-                        console.log("[completeAreaFill] General logic - Filled 'emptyRegion' area. Size:", chosenArea.size, "Started from:", startCellForFloodFill);
+                        chosenAreaForEnemyRemoval = chosenArea.areaCells; // Use getAreaIfFilled result for enemy check
+                        console.log("[completeAreaFill] General logic - Filled 'emptyRegion'. Size:", chosenArea.size, "From:",startCell);
                     } else {
-                        console.log("[completeAreaFill] General logic - Error: Chosen 'emptyRegion' has no ST_EMPTY start cell.");
+                        console.log("[completeAreaFill] General logic - Error: 'emptyRegion' (size "+chosenArea.size+") has no ST_EMPTY start cell.");
                         filledSuccessfully = false;
                     }
                 }
             } else {
                 if(heuristicPreventedFill){ console.log("[completeAreaFill] General logic - Heuristic prevented fill."); }
-                else { console.log("[completeAreaFill] General logic - No valid chosenArea or chosenArea.size is 0, or other fill failure."); }
-                filledSuccessfully = false; // Ensure reversion if fill didn't happen for any reason
+                else { console.log("[completeAreaFill] General logic - No valid chosenArea or size is 0."); }
+                filledSuccessfully = false;
             }
-        } // End of if(!isBorderClosure) else (general logic)
+        } // End general logic
 
-        // Common post-fill logic
+        // Common post-fill/reversion logic
         if (filledSuccessfully) {
-            console.log("[completeAreaFill] Before enemy removal. enemies.length:", enemies.length, "chosenAreaForEnemyRemoval.length:", chosenAreaForEnemyRemoval ? chosenAreaForEnemyRemoval.length : 'null');
-            if (chosenAreaForEnemyRemoval) { // Ensure it's not null
+            console.log("[completeAreaFill] Fill successful. Before enemy removal. enemies.length:", enemies.length, "chosenAreaForEnemyRemoval.length:", chosenAreaForEnemyRemoval ? chosenAreaForEnemyRemoval.length : 'null');
+            if (chosenAreaForEnemyRemoval) {
                 const enemiesToRemoveIndices = [];
                 for (let i = enemies.length - 1; i >= 0; i--) {
                     const enemy = enemies[i];
-                    const enemyGridX = floor(enemy.position.x / GRID_SIZE);
-                    const enemyGridY = floor(enemy.position.y / GRID_SIZE);
-                    if (chosenAreaForEnemyRemoval.some(cell => cell.x === enemyGridX && cell.y === enemyGridY)) {
+                    const eGridX = floor(enemy.position.x / GRID_SIZE);
+                    const eGridY = floor(enemy.position.y / GRID_SIZE);
+                    if (chosenAreaForEnemyRemoval.some(cell => cell.x === eGridX && cell.y === eGridY)) {
                         enemiesToRemoveIndices.push(i);
                     }
                 }
-                for (let index of enemiesToRemoveIndices) {
-                    enemies.splice(index, 1);
-                }
+                for (let idx of enemiesToRemoveIndices) { enemies.splice(idx, 1); }
                 console.log("[completeAreaFill] After enemy removal. enemies.length:", enemies.length);
             }
         } else {
-            console.log("[completeAreaFill] No fill occurred or fill failed. Reverting trail.");
-            // Revert all cells of the trail path to their state *before this trail drawing episode began*.
+            console.log("[completeAreaFill] No fill / fill failed. Reverting trail.");
             for (let p_data of trailPathFromPlayer) {
                 grid[p_data.x][p_data.y] = p_data.originalStateGridBeforeTrail;
             }
         }
 
-        console.log("[completeAreaFill] Ending. filledSuccessfully:", filledSuccessfully);
+        console.log("[completeAreaFill] Ending. filledSuccessfully:", filledSuccessfully, "Current score:", score);
         checkLevelComplete();
     }
 
@@ -768,13 +753,6 @@
 
                 if ( (i === 0 && j === 0) || (i === 1 && j === 1) || (i === Math.floor(COLS/2) && j === Math.floor(ROWS/2)) ) {
                     // console.log(`--- Debugging drawGrid cell[${i}][${j}] ---`);
-                    // console.log(`Canvas Cell (targetCanvasX,Y): ${targetCanvasX}, ${targetCanvasY}`);
-                    // console.log(`imageOffset (X,Y): ${imageOffsetX}, ${imageOffsetY}`);
-                    // console.log(`scaledImage (W,H): ${scaledImageWidth}, ${scaledImageHeight}`);
-                    // console.log(`imageScale: ${imageScale}`);
-                    // console.log(`originalImage (W,H): ${backgroundImage.width}, ${backgroundImage.height}`);
-                    // console.log(`Pre-clip (sx,sy): ${sx_before_clip}, ${sy_before_clip}`);
-                    // console.log(`Pre-clip (sWidth,sHeight): ${sWidth_before_clip}, ${sHeight_before_clip}`);
                 }
 
                 let sx = sx_before_clip;
@@ -782,45 +760,27 @@
                 let sWidth = sWidth_before_clip;
                 let sHeight = sHeight_before_clip;
 
-                // Check if the cell is outside the visible area of the scaled, centered image
-                // or if the source width/height is non-positive.
-                if (targetCanvasX + targetCanvasWidth < imageOffsetX || // Cell is to the left of the image
-                    targetCanvasX > imageOffsetX + scaledImageWidth ||  // Cell is to the right of the image
-                    targetCanvasY + targetCanvasHeight < imageOffsetY || // Cell is above the image
-                    targetCanvasY > imageOffsetY + scaledImageHeight || // Cell is below the image
+                if (targetCanvasX + targetCanvasWidth < imageOffsetX ||
+                    targetCanvasX > imageOffsetX + scaledImageWidth ||
+                    targetCanvasY + targetCanvasHeight < imageOffsetY ||
+                    targetCanvasY > imageOffsetY + scaledImageHeight ||
                     sWidth <= 0 || sHeight <= 0) {
-                    // This cell is outside the actual scaled image bounds on canvas,
-                    // or the source dimensions are invalid. So, do nothing, leave it yellow.
                     if ( (i === 0 && j === 0) || (i === 1 && j === 1) || (i === Math.floor(COLS/2) && j === Math.floor(ROWS/2)) ) {
                         // console.log(`Cell [${i}][${j}] determined to be outside image bounds or sWidth/sHeight <=0 initially. Remains yellow.`);
                     }
                 } else {
-                    // Further checks for sx, sy, sWidth, sHeight against original image dimensions
-                    if (sx < 0) {
-                        sWidth += sx; // Reduce width by the amount sx is negative (sx is negative)
-                        sx = 0;
-                    }
-                    if (sy < 0) {
-                        sHeight += sy; // Reduce height by the amount sy is negative (sy is negative)
-                        sy = 0;
-                    }
+                    if (sx < 0) { sWidth += sx; sx = 0; }
+                    if (sy < 0) { sHeight += sy; sy = 0; }
+                    if (sx + sWidth > backgroundImage.width) { sWidth = backgroundImage.width - sx; }
+                    if (sy + sHeight > backgroundImage.height) { sHeight = backgroundImage.height - sy; }
 
-                    if (sx + sWidth > backgroundImage.width) {
-                        sWidth = backgroundImage.width - sx;
-                    }
-                    if (sy + sHeight > backgroundImage.height) {
-                        sHeight = backgroundImage.height - sy;
-                    }
-
-                    // Only draw if the adjusted source width/height are still positive
                     if (sWidth > 0 && sHeight > 0) {
                         if ( (i === 0 && j === 0) || (i === 1 && j === 1) || (i === Math.floor(COLS/2) && j === Math.floor(ROWS/2)) ) {
                             // console.log(`Post-clip (sx,sy): ${sx}, ${sy}`);
-                            // console.log(`Post-clip (sWidth,sHeight): ${sWidth}, ${sHeight}`);
                         }
                         image(backgroundImage, 
-                              dx, dy, targetCanvasWidth, targetCanvasHeight, // Destination on canvas
-                              sx, sy, sWidth, sHeight);                    // Source from original image
+                              dx, dy, targetCanvasWidth, targetCanvasHeight,
+                              sx, sy, sWidth, sHeight);
                     } else {
                         if ( (i === 0 && j === 0) || (i === 1 && j === 1) || (i === Math.floor(COLS/2) && j === Math.floor(ROWS/2)) ) {
                             // console.log(`Cell [${i}][${j}] sWidth or sHeight became <=0 after clipping. sx:${sx}, sy:${sy}, sW:${sWidth}, sH:${sHeight}. Stays yellow.`);
@@ -828,14 +788,11 @@
                     }
                 }
             }
-            // If backgroundImage is not loaded/valid or imageScale is invalid, the cell remains yellow.
             
           } else if (grid[i][j] === ST_EMPTY) {
-            // ST_EMPTY cells are drawn with their specific color (dark blue/grey)
             fill(emptyColor);
             rect(dx, dy, GRID_SIZE, GRID_SIZE);
           } else if (grid[i][j] === ST_TRAIL) {
-            // ST_TRAIL cells are drawn with their specific color
             fill(trailColor); 
             rect(dx, dy, GRID_SIZE, GRID_SIZE);
           }
@@ -848,32 +805,16 @@
         console.log("calculateBackgroundImageTransform: backgroundImage not loaded or invalid.");
         return;
       }
-
-      let canvasWidth = width; // p5.js global for canvas width
-      let canvasHeight = height; // p5.js global for canvas height
-
-      let imageAspect = backgroundImage.width / backgroundImage.height;
-      let canvasAspect = canvasWidth / canvasHeight;
-
-      if (imageAspect > canvasAspect) {
-        // Image is wider relative to canvas, fit by width
-        imageScale = canvasWidth / backgroundImage.width;
-      } else {
-        // Image is taller relative to canvas (or same aspect), fit by height
-        imageScale = canvasHeight / backgroundImage.height;
-      }
-
+      let canvasW = width; let canvasH = height;
+      let imgAspect = backgroundImage.width / backgroundImage.height;
+      let canvasAspect = canvasW / canvasH;
+      if (imgAspect > canvasAspect) { imageScale = canvasW / backgroundImage.width; }
+      else { imageScale = canvasH / backgroundImage.height; }
       scaledImageWidth = backgroundImage.width * imageScale;
       scaledImageHeight = backgroundImage.height * imageScale;
-
-      imageOffsetX = (canvasWidth - scaledImageWidth) / 2;
-      imageOffsetY = (canvasHeight - scaledImageHeight) / 2;
-
-      console.log("Calculated background image transform:", {
-          imageScale, scaledImageWidth, scaledImageHeight, imageOffsetX, imageOffsetY,
-          canvasWidth, canvasHeight,
-          imgActualWidth: backgroundImage.width, imgActualHeight: backgroundImage.height
-      });
+      imageOffsetX = (canvasW - scaledImageWidth) / 2;
+      imageOffsetY = (canvasH - scaledImageHeight) / 2;
+      console.log("Calculated background image transform:", { imageScale, scaledImageWidth, scaledImageHeight, imageOffsetX, imageOffsetY });
     }
 
     function resetGame() {
@@ -882,34 +823,21 @@
       grid[player.x][player.y] = ST_FILLED;
       player.isDrawingTrail = false;
       player.trailPath = [];
-      player.dx = 0;
-      player.dy = 0;
-      score = 0; 
-      percentualAreaExibido = 0; 
-      if(elementoInfoPercentual) { 
-          elementoInfoPercentual.innerHTML = `Área: ${percentualAreaExibido.toFixed(0)}%`;
-      }
-
+      player.dx = 0; player.dy = 0;
+      score = 0; percentualAreaExibido = 0;
+      if(elementoInfoPercentual) { elementoInfoPercentual.innerHTML = `Área: ${percentualAreaExibido.toFixed(0)}%`; }
 
       enemies = [];
       for (let i = 0; i < NUM_ENEMIES; i++) {
-        let enemyStartX, enemyStartY;
-        let enemyGridX, enemyGridY;
-        let attempts = 0;
+        let eStartX, eStartY, eGridX, eGridY, attempts = 0;
         do { 
-            enemyStartX = floor(random(GRID_SIZE * 4, width - GRID_SIZE * 4)); 
-            enemyStartY = floor(random(GRID_SIZE * 4, height - GRID_SIZE * 4));
-            enemyGridX = floor(enemyStartX / GRID_SIZE);
-            enemyGridY = floor(enemyStartY / GRID_SIZE);
+            eStartX = floor(random(GRID_SIZE*4, width-GRID_SIZE*4));
+            eStartY = floor(random(GRID_SIZE*4, height-GRID_SIZE*4));
+            eGridX = floor(eStartX/GRID_SIZE); eGridY = floor(eStartY/GRID_SIZE);
             attempts++;
-            if (attempts > 100) { 
-                console.error("Não foi possível posicionar o inimigo em área vazia.");
-                enemyStartX = width/2; enemyStartY = height/2; 
-                break;
-            }
-        } while (grid[enemyGridX] === undefined || grid[enemyGridX][enemyGridY] === undefined || grid[enemyGridX][enemyGridY] !== ST_EMPTY); 
-        
-        enemies.push(new Enemy(enemyStartX, enemyStartY)); 
+            if (attempts > 100) { eStartX = width/2; eStartY = height/2; break; }
+        } while (grid[eGridX] === undefined || grid[eGridX][eGridY] === undefined || grid[eGridX][eGridY] !== ST_EMPTY);
+        enemies.push(new Enemy(eStartX, eStartY));
       }
       gameState = 'playing';
     }
@@ -920,22 +848,11 @@
     }
     
     function checkLevelComplete() {
-        if (totalFillableCells === 0) {
-            percentualAreaExibido = 0; 
-        } else {
-            percentualAreaExibido = (score / totalFillableCells) * 100; 
-        }
-        
-        if(elementoInfoPercentual) { 
-            elementoInfoPercentual.innerHTML = `Área: ${percentualAreaExibido.toFixed(0)}%`;
-        }
-        
+        if (totalFillableCells === 0) percentualAreaExibido = 0;
+        else percentualAreaExibido = (score / totalFillableCells) * 100;
+        if(elementoInfoPercentual) elementoInfoPercentual.innerHTML = `Área: ${percentualAreaExibido.toFixed(0)}%`;
         console.log(`Progresso: ${score} / ${totalFillableCells} = ${percentualAreaExibido.toFixed(2)}%`);
-        
-        if (percentualAreaExibido >= 75) {
-            gameState = 'levelComplete';
-            console.log("Nível Completo!");
-        }
+        if (percentualAreaExibido >= 75) { gameState = 'levelComplete'; console.log("Nível Completo!"); }
     }
 
     // --- Funções p5.js ---
@@ -946,299 +863,112 @@
     function setup() {
       splashScreenImage = document.getElementById('splashscreen-image');
       elementoInfoPercentual = document.getElementById('info-percentual');
-
-      // *** AJUSTE NO CÁLCULO DA ALTURA DO CANVAS PARA MAXIMIZAR ÁREA ÚTIL ***
-      const infoHeight = elementoInfoPercentual.offsetHeight + parseFloat(getComputedStyle(elementoInfoPercentual).marginBottom);
-      const dPadEffectiveHeight = 100 + 10 + 10; // Altura D-Pad + margem superior + margem inferior (aproximado)
-      const availableHeight = windowHeight - infoHeight - dPadEffectiveHeight;
-      
-      canvasWidth = floor(windowWidth * 0.98 / GRID_SIZE) * GRID_SIZE; // Quase 100% da largura
-      canvasHeight = floor(availableHeight / GRID_SIZE) * GRID_SIZE; 
-      
-      // Mínimos para garantir jogabilidade
+      const infoH = elementoInfoPercentual.offsetHeight + parseFloat(getComputedStyle(elementoInfoPercentual).marginBottom);
+      const dPadH = 100 + 10 + 10;
+      const availH = windowHeight - infoH - dPadH;
+      canvasWidth = floor(windowWidth * 0.98 / GRID_SIZE) * GRID_SIZE;
+      canvasHeight = floor(availH / GRID_SIZE) * GRID_SIZE;
       if (canvasWidth < GRID_SIZE * 25) canvasWidth = GRID_SIZE * 25; 
-      if (canvasHeight < GRID_SIZE * 20) canvasHeight = GRID_SIZE * 20; // Reduzido um pouco o mínimo da altura
-      
+      if (canvasHeight < GRID_SIZE * 20) canvasHeight = GRID_SIZE * 20;
       cnv = createCanvas(canvasWidth, canvasHeight); 
       cnv.mousePressed(handleCanvasTouchStart); 
       cnv.touchStarted(handleCanvasTouchStart); 
-
-      console.log("Attempting to load image: img/fundo_01.png");
-      backgroundImage = loadImage(
-        'img/fundo_01.png',
-        img => {
-          console.log('Background image loaded successfully:', img.width, 'x', img.height);
-          backgroundImage = img; // Assign to global
-          calculateBackgroundImageTransform(); // Call here
-        },
-        err => {
-          console.error('Failed to load background image:', err);
-          backgroundImage = null; // Explicitly set to null on error
-        }
-      );
-
-      caterpillarUpImage = loadImage('img/cima.png',
-        img => console.log('Caterpillar Up image loaded successfully. Width:', img.width),
-        err => console.error('Error loading Caterpillar Up image:', err)
-      );
-      caterpillarDownImage = loadImage('img/baixo.png',
-        img => console.log('Caterpillar Down image loaded successfully. Width:', img.width),
-        err => console.error('Error loading Caterpillar Down image:', err)
-      );
-      caterpillarLeftImage = loadImage('img/esquerda.png',
-        img => console.log('Caterpillar Left image loaded successfully. Width:', img.width),
-        err => console.error('Error loading Caterpillar Left image:', err)
-      );
-      caterpillarRightImage = loadImage('img/direita.png',
-        img => console.log('Caterpillar Right image loaded successfully. Width:', img.width),
-        err => console.error('Error loading Caterpillar Right image:', err)
-      );
-
-      COLS = floor(width / GRID_SIZE);
-      ROWS = floor(height / GRID_SIZE);
-
-      let playerBaseColor = SUPERNOVA_COLORS[Math.floor(random(SUPERNOVA_COLORS.length))];
-      playerColor = color(playerBaseColor[0], playerBaseColor[1], playerBaseColor[2]);
-      trailColor = color(playerBaseColor[0], playerBaseColor[1], playerBaseColor[2], 100);
-      
-      yellowColor = color(255, 255, 0); // Define yellow
-      filledColor = color(50, 50, 70);
-      emptyColor = color(10, 10, 20); // Reverted to original dark blue/grey
-      
-      angleMode(RADIANS); 
-      setupTouchControls(); 
-      // resetGame(); // Called after splash screen
-      frameRate(30); 
+      backgroundImage = loadImage('img/fundo_01.png', img => { backgroundImage = img; calculateBackgroundImageTransform(); }, err => { console.error('Failed background:', err); backgroundImage = null; });
+      caterpillarUpImage = loadImage('img/cima.png'); caterpillarDownImage = loadImage('img/baixo.png');
+      caterpillarLeftImage = loadImage('img/esquerda.png'); caterpillarRightImage = loadImage('img/direita.png');
+      COLS = floor(width / GRID_SIZE); ROWS = floor(height / GRID_SIZE);
+      let pBaseColor = SUPERNOVA_COLORS[Math.floor(random(SUPERNOVA_COLORS.length))];
+      playerColor = color(pBaseColor[0], pBaseColor[1], pBaseColor[2]);
+      trailColor = color(pBaseColor[0], pBaseColor[1], pBaseColor[2], 100);
+      yellowColor = color(255, 255, 0); filledColor = color(50, 50, 70); emptyColor = color(10, 10, 20);
+      angleMode(RADIANS); setupTouchControls(); frameRate(30);
     }
 
     function draw() {
       if (gameState === 'splashScreen') {
         splashScreenTimer += deltaTime;
-
         if (splashScreenTimer >= SPLASH_DURATION) {
-          if (splashScreenImage) {
-            splashScreenImage.style.display = 'none';
-          }
-          gameState = 'playing';
-          resetGame();
+          if (splashScreenImage) splashScreenImage.style.display = 'none';
+          gameState = 'playing'; resetGame();
         }
         return;
       }
-
       if (gameState === 'playing') {
-        if (currentTouchButtonDirection.dx !== 0 || currentTouchButtonDirection.dy !== 0) {
-            player.setDirection(currentTouchButtonDirection.dx, currentTouchButtonDirection.dy);
-        }
-        background(0);
-        drawGrid();
-        player.update(); 
-        player.draw();
-        for (let enemy of enemies) {
-          enemy.update(); 
-          enemy.render(); 
-        }
-
+        if (currentTouchButtonDirection.dx !== 0 || currentTouchButtonDirection.dy !== 0) player.setDirection(currentTouchButtonDirection.dx, currentTouchButtonDirection.dy);
+        background(0); drawGrid(); player.update(); player.draw();
+        for (let enemy of enemies) { enemy.update(); enemy.render(); }
       } else if (gameState === 'gameOver') {
-        background(50,0,0);
-        drawRestartButton();
-        fill(255); 
-        textSize(width / 15); 
-        textAlign(CENTER, CENTER);
-        text("GAME OVER", width / 2, height / 2 - (GRID_SIZE * 4)); 
+        background(50,0,0); drawRestartButton(); fill(255); textSize(width/15); textAlign(CENTER,CENTER); text("GAME OVER", width/2, height/2 - (GRID_SIZE*4));
       } else if (gameState === 'levelComplete') {
-        background(0,50,0);
-        drawRestartButton("Jogar Novamente");
-        fill(255);
-        textSize(width / 15);
-        textAlign(CENTER, CENTER);
-        text("NÍVEL COMPLETO!", width / 2, height / 2 - (GRID_SIZE * 4)); 
+        background(0,50,0); drawRestartButton("Jogar Novamente"); fill(255); textSize(width/15); textAlign(CENTER,CENTER); text("NÍVEL COMPLETO!", width/2, height/2 - (GRID_SIZE*4));
       }
       console.log("[draw()] Frame completed. gameState:", gameState);
     }
 
     function drawRestartButton(label = "Reiniciar") {
-        let btnW = width / 3;
-        let btnH = GRID_SIZE * 5;
-        let btnX = width / 2 - btnW / 2;
-        let btnY = height / 2 + GRID_SIZE * 1; 
-
-        restartButtonProps = { x: btnX, y: btnY, w: btnW, h: btnH, label: label };
-
-        push();
-        fill(100, 100, 200, 200); 
-        stroke(200, 200, 255);
-        strokeWeight(2);
-        rect(restartButtonProps.x, restartButtonProps.y, restartButtonProps.w, restartButtonProps.h, 10); 
-
-        fill(255);
-        noStroke();
-        textSize(GRID_SIZE * 2);
-        textAlign(CENTER, CENTER);
-        text(restartButtonProps.label, restartButtonProps.x + restartButtonProps.w / 2, restartButtonProps.y + restartButtonProps.h / 2);
-        pop();
+        let btnW = width/3, btnH = GRID_SIZE*5, btnX = width/2-btnW/2, btnY = height/2+GRID_SIZE*1;
+        restartButtonProps = {x:btnX,y:btnY,w:btnW,h:btnH,label:label};
+        push(); fill(100,100,200,200); stroke(200,200,255); strokeWeight(2); rect(btnX,btnY,btnW,btnH,10);
+        fill(255); noStroke(); textSize(GRID_SIZE*2); textAlign(CENTER,CENTER); text(label,btnX+btnW/2,btnY+btnH/2); pop();
     }
 
     function handleCanvasTouchStart(event) { 
         if (gameState === 'playing') {
-            let touchControlsDiv = document.getElementById('touch-controls');
-            if (touchControlsDiv && touchControlsDiv.contains(event.target)) {
-                return; 
-            }
-            touchStartX = mouseX; 
-            touchStartY = mouseY; 
-            isSwiping = true;
-            currentTouchButtonDirection.dx = 0; 
-            currentTouchButtonDirection.dy = 0;
-            lastDirectionKey = null; 
+            let tcDiv = document.getElementById('touch-controls');
+            if (tcDiv && tcDiv.contains(event.target)) return;
+            touchStartX = mouseX; touchStartY = mouseY; isSwiping = true;
+            currentTouchButtonDirection.dx=0; currentTouchButtonDirection.dy=0; lastDirectionKey=null;
         }
-        if(event && typeof event.preventDefault === 'function') event.preventDefault(); 
-        return false; 
+        if(event && typeof event.preventDefault === 'function') event.preventDefault(); return false;
     }
 
     function touchMoved(event) { 
         if (gameState === 'playing' && isSwiping) {
-            let currentX = mouseX; 
-            let currentY = mouseY; 
-
-            let diffX = currentX - touchStartX;
-            let diffY = currentY - touchStartY;
-
-            if (abs(diffX) > swipeThreshold || abs(diffY) > swipeThreshold) {
-                if (abs(diffX) > abs(diffY)) { 
-                    player.setDirection(diffX > 0 ? 1 : -1, 0);
-                } else { 
-                    player.setDirection(0, diffY > 0 ? 1 : -1);
-                }
-                touchStartX = currentX;
-                touchStartY = currentY;
-                
-                lastDirectionKey = null; 
-                currentTouchButtonDirection.dx = 0; 
-                currentTouchButtonDirection.dy = 0;
+            let curX=mouseX, curY=mouseY, diffX=curX-touchStartX, diffY=curY-touchStartY;
+            if (abs(diffX)>swipeThreshold || abs(diffY)>swipeThreshold) {
+                if(abs(diffX)>abs(diffY)) player.setDirection(diffX>0?1:-1,0); else player.setDirection(0,diffY>0?1:-1);
+                touchStartX=curX; touchStartY=curY; lastDirectionKey=null; currentTouchButtonDirection.dx=0; currentTouchButtonDirection.dy=0;
             }
         }
-        if(event && typeof event.preventDefault === 'function') event.preventDefault();
-        return false; 
+        if(event && typeof event.preventDefault === 'function') event.preventDefault(); return false;
     }
 
     function touchEnded(event) { 
-        if (isSwiping) { 
-            isSwiping = false;
-            player.setDirection(0, 0);
-        }
-        if(event && typeof event.preventDefault === 'function') event.preventDefault();
-        return false; 
+        if(isSwiping){isSwiping=false; player.setDirection(0,0);}
+        if(event && typeof event.preventDefault==='function') event.preventDefault(); return false;
     }
-    function mouseReleased(event){ 
-        touchEnded(event);
-    }
-
+    function mouseReleased(event){ touchEnded(event); }
 
     function keyPressed() {
-      if (gameState !== 'playing') {
-        return;
-      }
-      currentTouchButtonDirection.dx = 0; 
-      currentTouchButtonDirection.dy = 0;
-      isSwiping = false; 
-      player.setDirection(0,0); 
-
-      if (keyCode === UP_ARROW) { player.setDirection(0, -1); lastDirectionKey = UP_ARROW; }
-      else if (keyCode === DOWN_ARROW) { player.setDirection(0, 1); lastDirectionKey = DOWN_ARROW; }
-      else if (keyCode === LEFT_ARROW) { player.setDirection(-1, 0); lastDirectionKey = LEFT_ARROW; }
-      else if (keyCode === RIGHT_ARROW) { player.setDirection(1, 0); lastDirectionKey = RIGHT_ARROW; }
+      if(gameState!=='playing')return; currentTouchButtonDirection.dx=0;currentTouchButtonDirection.dy=0;isSwiping=false;player.setDirection(0,0);
+      if(keyCode===UP_ARROW)player.setDirection(0,-1); else if(keyCode===DOWN_ARROW)player.setDirection(0,1);
+      else if(keyCode===LEFT_ARROW)player.setDirection(-1,0); else if(keyCode===RIGHT_ARROW)player.setDirection(1,0);
+      if(keyCode===UP_ARROW||keyCode===DOWN_ARROW||keyCode===LEFT_ARROW||keyCode===RIGHT_ARROW) lastDirectionKey=keyCode;
       return false; 
     }
-
     function keyReleased() {
-        if (gameState !== 'playing') return;
-        if ( (keyCode === UP_ARROW    && player.dy === -1 && lastDirectionKey === UP_ARROW) ||
-             (keyCode === DOWN_ARROW  && player.dy ===  1 && lastDirectionKey === DOWN_ARROW) ||
-             (keyCode === LEFT_ARROW  && player.dx === -1 && lastDirectionKey === LEFT_ARROW) ||
-             (keyCode === RIGHT_ARROW && player.dx ===  1 && lastDirectionKey === RIGHT_ARROW) ) {
-            player.setDirection(0, 0); 
-            lastDirectionKey = null;
-        }
+        if(gameState!=='playing')return;
+        if(keyCode===lastDirectionKey) {player.setDirection(0,0); lastDirectionKey=null;}
         return false;
     }
-
     function mousePressed(event) { 
-        if (gameState === 'gameOver' || gameState === 'levelComplete') {
-            if (mouseX > restartButtonProps.x && mouseX < restartButtonProps.x + restartButtonProps.w &&
-                mouseY > restartButtonProps.y && mouseY < restartButtonProps.y + restartButtonProps.h) {
-                resetGame();
-                return; 
-            }
+        if(gameState==='gameOver'||gameState==='levelComplete'){
+            if(mouseX>restartButtonProps.x && mouseX<restartButtonProps.x+restartButtonProps.w && mouseY>restartButtonProps.y && mouseY<restartButtonProps.y+restartButtonProps.h) resetGame();
         }
     }
-    
     function setupTouchControls() {
-        const btnUp = document.getElementById('btn-up');
-        const btnDown = document.getElementById('btn-down');
-        const btnLeft = document.getElementById('btn-left');
-        const btnRight = document.getElementById('btn-right');
-
-        const handleTouchButtonStart = (dx, dy, event) => {
-            if (gameState === 'playing') {
-                isSwiping = false; 
-                player.setDirection(dx, dy); 
-                currentTouchButtonDirection.dx = dx; 
-                currentTouchButtonDirection.dy = dy;
-                lastDirectionKey = null; 
-                if(event) event.preventDefault();
-            }
-        };
-
-        const handleTouchButtonEnd = (event) => {
-            if (gameState === 'playing') {
-                if (currentTouchButtonDirection.dx !== 0 || currentTouchButtonDirection.dy !== 0) {
-                     player.setDirection(0, 0);
-                }
-                currentTouchButtonDirection.dx = 0;
-                currentTouchButtonDirection.dy = 0;
-                if(event) event.preventDefault();
-            }
-        };
-
-        ['mousedown', 'touchstart'].forEach(evtType => {
-            btnUp.addEventListener(evtType, (e) => handleTouchButtonStart(0, -1, e));
-            btnDown.addEventListener(evtType, (e) => handleTouchButtonStart(0, 1, e));
-            btnLeft.addEventListener(evtType, (e) => handleTouchButtonStart(-1, 0, e));
-            btnRight.addEventListener(evtType, (e) => handleTouchButtonStart(1, 0, e));
-        });
-
-        ['mouseup', 'touchend', 'mouseleave'].forEach(evtType => { 
-            btnUp.addEventListener(evtType, (e) => handleTouchButtonEnd(e));
-            btnDown.addEventListener(evtType, (e) => handleTouchButtonEnd(e));
-            btnLeft.addEventListener(evtType, (e) => handleTouchButtonEnd(e));
-            btnRight.addEventListener(evtType, (e) => handleTouchButtonEnd(e));
-        });
+        const btnUp=document.getElementById('btn-up'), btnDown=document.getElementById('btn-down'), btnLeft=document.getElementById('btn-left'), btnRight=document.getElementById('btn-right');
+        const touchStartHandler=(dx,dy,e)=>{if(gameState==='playing'){isSwiping=false;player.setDirection(dx,dy);currentTouchButtonDirection.dx=dx;currentTouchButtonDirection.dy=dy;lastDirectionKey=null;if(e)e.preventDefault();}};
+        const touchEndHandler=(e)=>{if(gameState==='playing'){if(currentTouchButtonDirection.dx!==0||currentTouchButtonDirection.dy!==0)player.setDirection(0,0);currentTouchButtonDirection.dx=0;currentTouchButtonDirection.dy=0;if(e)e.preventDefault();}};
+        ['mousedown','touchstart'].forEach(evt=>{ btnUp.addEventListener(evt,e=>touchStartHandler(0,-1,e)); btnDown.addEventListener(evt,e=>touchStartHandler(0,1,e)); btnLeft.addEventListener(evt,e=>touchStartHandler(-1,0,e)); btnRight.addEventListener(evt,e=>touchStartHandler(1,0,e)); });
+        ['mouseup','touchend','mouseleave'].forEach(evt=>{ btnUp.addEventListener(evt,touchEndHandler); btnDown.addEventListener(evt,touchEndHandler); btnLeft.addEventListener(evt,touchEndHandler); btnRight.addEventListener(evt,touchEndHandler); });
     }
-
-
     function windowResized() {
-        const infoElem = document.getElementById('info-percentual');
-        const dPadElem = document.getElementById('touch-controls');
-        let infoHeight = 0;
-        if (infoElem) {
-            infoHeight = infoElem.offsetHeight + parseFloat(getComputedStyle(infoElem).marginBottom || 0) + parseFloat(getComputedStyle(infoElem).paddingTop || 0) + parseFloat(getComputedStyle(infoElem).paddingBottom || 0);
-        }
-        let dPadHeight = 0;
-        if (dPadElem) {
-             dPadHeight = dPadElem.offsetHeight + parseFloat(getComputedStyle(dPadElem).bottom || 0) + 10;
-        }
-
-        const availableHeight = windowHeight - infoHeight - dPadHeight;
-        
-        canvasWidth = floor(windowWidth * 0.98 / GRID_SIZE) * GRID_SIZE; 
-        canvasHeight = floor(availableHeight / GRID_SIZE) * GRID_SIZE; 
-        
-        if (canvasWidth < GRID_SIZE * 20) canvasWidth = GRID_SIZE * 20; 
-        if (canvasHeight < GRID_SIZE * 15) canvasHeight = GRID_SIZE * 15;
-        
-        resizeCanvas(canvasWidth, canvasHeight);
-        COLS = floor(width / GRID_SIZE);
-        ROWS = floor(height / GRID_SIZE);
-        resetGame();
-        calculateBackgroundImageTransform();
+        const infoElem=document.getElementById('info-percentual'), dPadElem=document.getElementById('touch-controls');
+        let infoH=0; if(infoElem)infoH=infoElem.offsetHeight+parseFloat(getComputedStyle(infoElem).marginBottom||0)+parseFloat(getComputedStyle(infoElem).paddingTop||0)+parseFloat(getComputedStyle(infoElem).paddingBottom||0);
+        let dPadH=0; if(dPadElem)dPadH=dPadElem.offsetHeight+parseFloat(getComputedStyle(dPadElem).bottom||0)+10;
+        const availH=windowHeight-infoH-dPadH; canvasWidth=floor(windowWidth*0.98/GRID_SIZE)*GRID_SIZE; canvasHeight=floor(availH/GRID_SIZE)*GRID_SIZE;
+        if(canvasWidth<GRID_SIZE*20)canvasWidth=GRID_SIZE*20; if(canvasHeight<GRID_SIZE*15)canvasHeight=GRID_SIZE*15;
+        resizeCanvas(canvasWidth,canvasHeight); COLS=floor(width/GRID_SIZE); ROWS=floor(height/GRID_SIZE);
+        resetGame(); calculateBackgroundImageTransform();
     }
