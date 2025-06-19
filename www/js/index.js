@@ -527,7 +527,6 @@
     }
 
     function completeAreaFill(trailPathFromPlayer, isBorderClosure) {
-        // Ensure existing console logs (or add new ones) clearly indicate parameters
         console.log("[completeAreaFill] Called. pathLength:", trailPathFromPlayer.length, "isBorderClosure:", isBorderClosure);
 
         if (trailPathFromPlayer.length < 3) {
@@ -535,155 +534,124 @@
                 grid[p_data.x][p_data.y] = p_data.originalStateGridBeforeTrail;
             }
             console.log("[completeAreaFill] Path too short, reverted.");
-            checkLevelComplete(); // Ensure this is called
+            checkLevelComplete();
             return;
         }
 
         let filledSuccessfully = false;
-        let chosenAreaForEnemyRemoval = null;
+        // This variable will hold the definitive list of cells used for enemy removal,
+        // populated by either the border-closure path or the general path.
+        let finalCellsForEnemyRemoval = null;
 
         if (isBorderClosure) {
-            console.log("[completeAreaFill] BorderClosure specific logic activated.");
+            console.log("[completeAreaFill-Border] BorderClosure specific logic activated.");
             let trailItselfAreaCells = [];
             for (let p_data of trailPathFromPlayer) {
                 if (p_data.originalStateGridBeforeTrail === ST_EMPTY) {
                     trailItselfAreaCells.push({ x: p_data.x, y: p_data.y });
                 }
             }
+            console.log("[completeAreaFill-Border] trailItselfAreaCells.length:", trailItselfAreaCells.length);
 
             if (trailItselfAreaCells.length > 0) {
-                console.log("[completeAreaFill] BorderClosure: Attempting to fill 'trailItself' of size:", trailItselfAreaCells.length);
                 for (let cell of trailItselfAreaCells) {
                     grid[cell.x][cell.y] = ST_FILLED;
                     score++;
                 }
-                // Ensure border segments of the trail also remain/become ST_FILLED
-                for (let p_data of trailPathFromPlayer) {
+                for (let p_data of trailPathFromPlayer) { // Ensure border segments remain filled
                     if (p_data.originalStateGridBeforeTrail === ST_FILLED) {
                         grid[p_data.x][p_data.y] = ST_FILLED;
                     }
                 }
                 filledSuccessfully = true;
-                chosenAreaForEnemyRemoval = trailItselfAreaCells;
-                console.log("[completeAreaFill] BorderClosure: 'trailItself' filled. Score updated.");
+                finalCellsForEnemyRemoval = trailItselfAreaCells; // Use these specific cells
+                console.log("[completeAreaFill-Border] 'trailItself' filled. finalCellsForEnemyRemoval.length:", finalCellsForEnemyRemoval.length, "Score updated.");
             } else {
-                console.log("[completeAreaFill] BorderClosure: 'trailItself' is empty. No fill performed.");
+                console.log("[completeAreaFill-Border] 'trailItself' is empty. No fill.");
                 filledSuccessfully = false;
             }
         } else { // General logic for non-border closures
-            console.log("[completeAreaFill] Non-BorderClosure general logic activated.");
+            console.log("[completeAreaFill-General] Non-BorderClosure general logic activated.");
 
-            // Temporarily mark all cells in the current path as ST_FILLED for boundary detection
-            for (let p_data of trailPathFromPlayer) {
-                grid[p_data.x][p_data.y] = ST_FILLED;
-            }
-
+            // START OF GENERAL LOGIC BLOCK (as implemented in prior steps)
+            for (let p_data of trailPathFromPlayer) { /* Temp mark trail ST_FILLED */ grid[p_data.x][p_data.y] = ST_FILLED; }
             let fillCandidates = [];
-            for (let i = 0; i < trailPathFromPlayer.length -1; i++) {
-                const p1 = trailPathFromPlayer[i];
-                const p2 = trailPathFromPlayer[i+1];
-                let dx = p2.x - p1.x; let dy = p2.y - p1.y;
-                let s1x,s1y,s2x,s2y;
-                s1x=p1.x-dy; s1y=p1.y+dx; s2x=p1.x+dy; s2y=p1.y-dx;
-                if(isValidForFillStart(s1x,s1y)) fillCandidates.push({x:s1x,y:s1y});
-                if(isValidForFillStart(s2x,s2y)) fillCandidates.push({x:s2x,y:s2y});
-                s1x=p2.x-dy; s1y=p2.y+dx; s2x=p2.x+dy; s2y=p2.y-dx;
-                if(isValidForFillStart(s1x,s1y)) fillCandidates.push({x:s1x,y:s1y});
-                if(isValidForFillStart(s2x,s2y)) fillCandidates.push({x:s2x,y:s2y});
+            for (let i = 0; i < trailPathFromPlayer.length -1; i++) { /* ... generate fillCandidates ... */
+                const p1 = trailPathFromPlayer[i]; const p2 = trailPathFromPlayer[i+1];
+                let dx = p2.x-p1.x; let dy = p2.y-p1.y; let s1x,s1y,s2x,s2y;
+                s1x=p1.x-dy;s1y=p1.y+dx; s2x=p1.x+dy;s2y=p1.y-dx;
+                if(isValidForFillStart(s1x,s1y))fillCandidates.push({x:s1x,y:s1y}); if(isValidForFillStart(s2x,s2y))fillCandidates.push({x:s2x,y:s2y});
+                s1x=p2.x-dy;s1y=p2.y+dx; s2x=p2.x+dy;s2y=p2.y-dx;
+                if(isValidForFillStart(s1x,s1y))fillCandidates.push({x:s1x,y:s1y}); if(isValidForFillStart(s2x,s2y))fillCandidates.push({x:s2x,y:s2y});
             }
-            fillCandidates = fillCandidates.filter((item,idx,self) => idx === self.findIndex(t => t.x===item.x && t.y===item.y));
-
-            let potentialAreas = [];
-            let visitedCandidateCellsForAreaCalc = new Set();
-            for (let cand of fillCandidates) {
-                const candKey = `${cand.x},${cand.y}`;
-                if(visitedCandidateCellsForAreaCalc.has(candKey) || grid[cand.x][cand.y] !== ST_EMPTY) continue;
-                let areaCells = getAreaIfFilled(cand.x, cand.y, ST_EMPTY);
-                if(areaCells.length>0){
-                    potentialAreas.push({areaCells:areaCells,size:areaCells.length,type:'emptyRegion',candidateStartCell:cand});
-                    areaCells.forEach(cell=>visitedCandidateCellsForAreaCalc.add(`${cell.x},${cell.y}`));
-                }
+            fillCandidates=fillCandidates.filter((item,idx,self)=>idx===self.findIndex(t=>t.x===item.x && t.y===item.y));
+            let potentialAreas=[]; let visitedCandCells=new Set();
+            for(let cand of fillCandidates){
+                const candKey=`${cand.x},${cand.y}`; if(visitedCandCells.has(candKey)||grid[cand.x][cand.y]!==ST_EMPTY)continue;
+                let areaCells=getAreaIfFilled(cand.x,cand.y,ST_EMPTY);
+                if(areaCells.length>0){potentialAreas.push({areaCells:areaCells,size:areaCells.length,type:'emptyRegion',candidateStartCell:cand}); areaCells.forEach(cell=>visitedCandCells.add(`${cell.x},${cell.y}`));}
             }
-
-            let trailItselfGen = []; // General trailItself
-            for(let p_data of trailPathFromPlayer){
-                if(p_data.originalStateGridBeforeTrail === ST_EMPTY) trailItselfGen.push({x:p_data.x,y:p_data.y});
-            }
-            if(trailItselfGen.length > 0) {
-                potentialAreas.push({areaCells:trailItselfGen,size:trailItselfGen.length,type:'trailItself',candidateStartCell:null});
-            }
-
-            console.log("[completeAreaFill] General logic - potentialAreas:", JSON.stringify(potentialAreas.map(p => ({type: p.type, size: p.size}))));
-
-            let chosenArea = null;
-            if(potentialAreas.length > 0){
-                potentialAreas.sort((a,b)=>a.size-b.size);
-                chosenArea = potentialAreas[0];
-            }
-
-            if(chosenArea){ console.log("[completeAreaFill] General logic - chosenArea: type:", chosenArea.type, "size:", chosenArea.size); }
-            else{ console.log("[completeAreaFill] General logic - chosenArea is null"); }
-
-            let heuristicPreventedFill = false;
-            if(chosenArea && chosenArea.type === 'emptyRegion' && totalFillableCells > 0){
-                const ratio = chosenArea.size / totalFillableCells;
-                if(ratio > 0.30){
-                    const trailCand = potentialAreas.find(p=>p.type === 'trailItself');
-                    if(trailCand && trailCand.size > chosenArea.size){
-                        console.log("[completeAreaFill] Heuristic: Main field (size "+chosenArea.size+") chosen due to long trail (size "+trailCand.size+"). Preventing fill.");
-                        heuristicPreventedFill = true;
+            let trailGenN=[]; for(let p_data of trailPathFromPlayer){if(p_data.originalStateGridBeforeTrail===ST_EMPTY)trailGenN.push({x:p_data.x,y:p_data.y});}
+            if(trailGenN.length>0){potentialAreas.push({areaCells:trailGenN,size:trailGenN.length,type:'trailItself',candidateStartCell:null});}
+            console.log("[completeAreaFill-General] potentialAreas:",JSON.stringify(potentialAreas.map(p=>({type:p.type,size:p.size}))));
+            let chosenAreaGen=null; if(potentialAreas.length>0){potentialAreas.sort((a,b)=>a.size-b.size);chosenAreaGen=potentialAreas[0];}
+            if(chosenAreaGen)console.log("[completeAreaFill-General] chosenArea: type:",chosenAreaGen.type,"size:",chosenAreaGen.size); else console.log("[completeAreaFill-General] chosenArea is null");
+            let heuristicPreventedFillGen=false;
+            if(chosenAreaGen && chosenAreaGen.type==='emptyRegion' && totalFillableCells>0){
+                if((chosenAreaGen.size/totalFillableCells)>0.30){
+                    const trailCandGen=potentialAreas.find(p=>p.type==='trailItself');
+                    if(trailCandGen && trailCandGen.size > chosenAreaGen.size){
+                        console.log("[completeAreaFill-General] Heuristic: Main field (size "+chosenAreaGen.size+") chosen due to long trail (size "+trailCandGen.size+"). Preventing fill.");
+                        heuristicPreventedFillGen=true;
                     }
                 }
             }
+            if(!heuristicPreventedFillGen && chosenAreaGen && chosenAreaGen.size>0){
+                if(chosenAreaGen.type==='trailItself'){
+                    for(let cell of chosenAreaGen.areaCells){grid[cell.x][cell.y]=ST_FILLED;score++;}
+                    filledSuccessfully=true; finalCellsForEnemyRemoval=chosenAreaGen.areaCells; // Use this for general path
+                    console.log("[completeAreaFill-General] Filled 'trailItself'. Size:",chosenAreaGen.size);
+                }else{ // emptyRegion
+                    let startCellGen=chosenAreaGen.candidateStartCell;
+                    if(!startCellGen||grid[startCellGen.x][startCellGen.y]!==ST_EMPTY)startCellGen=chosenAreaGen.areaCells.find(c=>grid[c.x][c.y]===ST_EMPTY);
+                    if(startCellGen){
+                        floodFill(startCellGen.x,startCellGen.y,ST_EMPTY,ST_FILLED); filledSuccessfully=true;
+                        finalCellsForEnemyRemoval=chosenAreaGen.areaCells; // Use this for general path
+                        console.log("[completeAreaFill-General] Filled 'emptyRegion'. Size:",chosenAreaGen.size,"From:",startCellGen);
+                    }else{console.log("[completeAreaFill-General] Error: 'emptyRegion' (size "+chosenAreaGen.size+") has no ST_EMPTY start cell.");filledSuccessfully=false;}
+                }
+            }else{
+                if(heuristicPreventedFillGen)console.log("[completeAreaFill-General] Heuristic prevented fill."); else console.log("[completeAreaFill-General] No valid chosenArea or size is 0.");
+                filledSuccessfully=false;
+            }
+            // END OF GENERAL LOGIC BLOCK (sets filledSuccessfully and finalCellsForEnemyRemoval if successful)
+        }
 
-            if(!heuristicPreventedFill && chosenArea && chosenArea.size > 0){
-                if(chosenArea.type === 'trailItself'){
-                    for(let cell of chosenArea.areaCells){grid[cell.x][cell.y]=ST_FILLED; score++;}
-                    filledSuccessfully = true;
-                    chosenAreaForEnemyRemoval = chosenArea.areaCells;
-                    console.log("[completeAreaFill] General logic - Filled 'trailItself'. Size:", chosenArea.size);
-                } else { // emptyRegion
-                    let startCell = chosenArea.candidateStartCell;
-                    if(!startCell || grid[startCell.x][startCell.y] !== ST_EMPTY) {
-                        startCell = chosenArea.areaCells.find(c=>grid[c.x][c.y] === ST_EMPTY);
-                    }
-                    if(startCell){
-                        floodFill(startCell.x,startCell.y,ST_EMPTY,ST_FILLED);
-                        filledSuccessfully = true;
-                        chosenAreaForEnemyRemoval = chosenArea.areaCells; // Use getAreaIfFilled result for enemy check
-                        console.log("[completeAreaFill] General logic - Filled 'emptyRegion'. Size:", chosenArea.size, "From:",startCell);
-                    } else {
-                        console.log("[completeAreaFill] General logic - Error: 'emptyRegion' (size "+chosenArea.size+") has no ST_EMPTY start cell.");
-                        filledSuccessfully = false;
-                    }
+        // Common Post-Fill Logic
+        if (filledSuccessfully && finalCellsForEnemyRemoval && finalCellsForEnemyRemoval.length > 0) {
+            console.log("[completeAreaFill-Post] Fill successful. Attempting enemy removal. List length:", finalCellsForEnemyRemoval.length, "Enemies before:", enemies.length);
+            const enemiesToRemoveIndices = [];
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const enemy = enemies[i];
+                const ex = floor(enemy.position.x / GRID_SIZE);
+                const ey = floor(enemy.position.y / GRID_SIZE);
+                if (finalCellsForEnemyRemoval.some(cell => cell.x === ex && cell.y === ey)) {
+                    console.log("[completeAreaFill-Post] Removing enemy at grid coords (", ex, ",", ey, ") pixel coords (", enemy.position.x.toFixed(0), ",", enemy.position.y.toFixed(0), "). Matched cell:", JSON.stringify(finalCellsForEnemyRemoval.find(cell => cell.x === ex && cell.y === ey)), " Enemy index:", i);
+                    enemiesToRemoveIndices.push(i);
+                }
+            }
+            for (let idx of enemiesToRemoveIndices) {
+                enemies.splice(idx, 1);
+            }
+            console.log("[completeAreaFill-Post] Enemies after:", enemies.length);
+        } else {
+            if (!filledSuccessfully) { // Only revert if no fill, not if fill happened but no enemies to remove
+                console.log("[completeAreaFill-Post] No fill occurred or fill failed. Reverting trail.");
+                for (let p_data of trailPathFromPlayer) {
+                    grid[p_data.x][p_data.y] = p_data.originalStateGridBeforeTrail;
                 }
             } else {
-                if(heuristicPreventedFill){ console.log("[completeAreaFill] General logic - Heuristic prevented fill."); }
-                else { console.log("[completeAreaFill] General logic - No valid chosenArea or size is 0."); }
-                filledSuccessfully = false;
-            }
-        } // End general logic
-
-        // Common post-fill/reversion logic
-        if (filledSuccessfully) {
-            console.log("[completeAreaFill] Fill successful. Before enemy removal. enemies.length:", enemies.length, "chosenAreaForEnemyRemoval.length:", chosenAreaForEnemyRemoval ? chosenAreaForEnemyRemoval.length : 'null');
-            if (chosenAreaForEnemyRemoval) {
-                const enemiesToRemoveIndices = [];
-                for (let i = enemies.length - 1; i >= 0; i--) {
-                    const enemy = enemies[i];
-                    const eGridX = floor(enemy.position.x / GRID_SIZE);
-                    const eGridY = floor(enemy.position.y / GRID_SIZE);
-                    if (chosenAreaForEnemyRemoval.some(cell => cell.x === eGridX && cell.y === eGridY)) {
-                        enemiesToRemoveIndices.push(i);
-                    }
-                }
-                for (let idx of enemiesToRemoveIndices) { enemies.splice(idx, 1); }
-                console.log("[completeAreaFill] After enemy removal. enemies.length:", enemies.length);
-            }
-        } else {
-            console.log("[completeAreaFill] No fill / fill failed. Reverting trail.");
-            for (let p_data of trailPathFromPlayer) {
-                grid[p_data.x][p_data.y] = p_data.originalStateGridBeforeTrail;
+                console.log("[completeAreaFill-Post] Fill successful, but no enemies to remove or finalCellsForEnemyRemoval was empty/null.");
             }
         }
 
