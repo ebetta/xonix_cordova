@@ -524,117 +524,136 @@
         floodFill(x, y - 1, targetState, replacementState);
     }
 
-    function completeAreaFill(trailPathFromPlayer) { // Renamed parameter
-        // If trailPathFromPlayer has less than 3 segments, it's too short to form an area.
-        // Revert grid cells to their original state before the trail was drawn.
+    function completeAreaFill(trailPathFromPlayer) {
         if (trailPathFromPlayer.length < 3) {
             for (let p_data of trailPathFromPlayer) {
-                // Ensure that we only revert actual trail segments, not the landing ST_FILLED cell if it was part of a short path.
-                // The originalStateGridBeforeTrail for the last point on a successful fill is ST_FILLED.
-                // For incomplete/short paths, if a point was ST_FILLED and player landed on it, it should remain ST_FILLED.
-                // The path points that were ST_EMPTY and became ST_TRAIL should revert to ST_EMPTY.
-                // The starting point of the trail (which was ST_FILLED) should revert to ST_FILLED.
                 grid[p_data.x][p_data.y] = p_data.originalStateGridBeforeTrail;
             }
-            // Player's trailPath and isDrawingTrail are reset by the Player class.
             return;
         }
 
-        // Temporarily mark the entire path as ST_FILLED to define the boundary for flood fill.
-        // The original states are preserved in trailPathFromPlayer.
+        // Temporarily mark all cells in the current path as ST_FILLED for boundary detection
         for (let p_data of trailPathFromPlayer) {
             grid[p_data.x][p_data.y] = ST_FILLED;
         }
 
         let fillCandidates = [];
-        // Iterate up to trailPathFromPlayer.length - 2 because the last point is the landing FILLED cell.
-        // We need pairs of points from the path to determine sides for fill candidates.
-        for (let i = 0; i < trailPathFromPlayer.length - 1; i++) {
+        for (let i = 0; i < trailPathFromPlayer.length -1; i++) {
             const p1 = trailPathFromPlayer[i];
             const p2 = trailPathFromPlayer[i+1];
             let dx = p2.x - p1.x;
             let dy = p2.y - p1.y;
+            let side1X, side1Y, side2X, side2Y;
 
-            // Candidate 1: (p1.x - dy, p1.y + dx)
-            // Candidate 2: (p1.x + dy, p1.y - dx)
-            // These are potential start points for flood fill on either side of the segment p1-p2
-            let side1X_p1 = p1.x - dy; let side1Y_p1 = p1.y + dx;
-            let side2X_p1 = p1.x + dy; let side2Y_p1 = p1.y - dx;
+            side1X = p1.x - dy; side1Y = p1.y + dx;
+            side2X = p1.x + dy; side2Y = p1.y - dx;
+            if (isValidForFillStart(side1X, side1Y)) fillCandidates.push({x: side1X, y: side1Y});
+            if (isValidForFillStart(side2X, side2Y)) fillCandidates.push({x: side2X, y: side2Y});
 
-            if (isValidForFillStart(side1X_p1, side1Y_p1)) fillCandidates.push({x: side1X_p1, y: side1Y_p1});
-            if (isValidForFillStart(side2X_p1, side2Y_p1)) fillCandidates.push({x: side2X_p1, y: side2Y_p1});
-
-            // Also consider candidates based on p2 (excluding the very last point of the trail path if it's the landing FILLED cell)
-            // The logic for candidate generation might need refinement based on how trailPathFromPlayer includes the final landing cell.
-            // For now, using p1 and p2 of each segment is standard.
+            side1X = p2.x - dy;  side1Y = p2.y + dx;
+            side2X = p2.x + dy;  side2Y = p2.y - dx;
+            if (isValidForFillStart(side1X, side1Y)) fillCandidates.push({x: side1X, y: side1Y});
+            if (isValidForFillStart(side2X, side2Y)) fillCandidates.push({x: side2X, y: side2Y});
         }
-        // Remove duplicate candidates
         fillCandidates = fillCandidates.filter((item, index, self) =>
             index === self.findIndex((t) => (t.x === item.x && t.y === item.y))
         );
 
-        let smallestAreaSize = Infinity;
-        let chosenCandidate = null;
-        let smallestPotentialAreaCells = null;
-        let filledSuccessfully = false;
+        let potentialAreas = []; // Stores { areaCells: [], size: number, type: 'emptyRegion' | 'trailItself', candidateStartCell: {} }
 
+        let visitedCandidateCellsForAreaCalc = new Set();
         for (let candidate of fillCandidates) {
-            if (grid[candidate.x][candidate.y] !== ST_EMPTY) { // Should be ST_EMPTY to be a valid start for fill
+            const candidateKey = `${candidate.x},${candidate.y}`;
+            if (visitedCandidateCellsForAreaCalc.has(candidateKey) || grid[candidate.x][candidate.y] !== ST_EMPTY) {
                 continue;
             }
-            let potentialArea = getAreaIfFilled(candidate.x, candidate.y, ST_EMPTY);
-            if (potentialArea.length > 0 && potentialArea.length < smallestAreaSize) {
-                // Check if this area contains any part of the player enemy (if applicable and exists)
-                // This check is an example, actual enemy logic might differ.
-                // For now, we assume any valid smallest area is fine.
-                smallestAreaSize = potentialArea.length;
-                chosenCandidate = candidate;
-                smallestPotentialAreaCells = potentialArea;
+
+            let areaCells = getAreaIfFilled(candidate.x, candidate.y, ST_EMPTY);
+            if (areaCells.length > 0) {
+                potentialAreas.push({ areaCells: areaCells, size: areaCells.length, type: 'emptyRegion', candidateStartCell: candidate });
+                areaCells.forEach(cell => visitedCandidateCellsForAreaCalc.add(`${cell.x},${cell.y}`));
             }
         }
 
-        if (chosenCandidate) {
-            console.log("Menor área escolhida para preenchimento:", chosenCandidate, "Tamanho:", smallestAreaSize);
-            floodFill(chosenCandidate.x, chosenCandidate.y, ST_EMPTY, ST_FILLED);
-            filledSuccessfully = true; // Mark that a fill operation was successful.
+        let trailItselfAreaCells = [];
+        for (let p_data of trailPathFromPlayer) {
+            if (p_data.originalStateGridBeforeTrail === ST_EMPTY) {
+                trailItselfAreaCells.push({ x: p_data.x, y: p_data.y });
+            }
+        }
 
-            // Player's trailPath and isDrawingTrail are reset by the Player class after this function returns.
+        if (trailItselfAreaCells.length > 0) {
+            potentialAreas.push({ areaCells: trailItselfAreaCells, size: trailItselfAreaCells.length, type: 'trailItself', candidateStartCell: null });
+        }
 
-            // Remove enemies within the filled area
-            const enemiesToRemoveIndices = [];
-            for (let i = enemies.length - 1; i >= 0; i--) {
-                const enemy = enemies[i];
-                const enemyGridX = floor(enemy.position.x / GRID_SIZE);
-                const enemyGridY = floor(enemy.position.y / GRID_SIZE);
+        let chosenArea = null;
+        let filledSuccessfully = false;
 
-                if (smallestPotentialAreaCells.some(cell => cell.x === enemyGridX && cell.y === enemyGridY)) {
-                    enemiesToRemoveIndices.push(i);
+        if (potentialAreas.length > 0) {
+            potentialAreas.sort((a, b) => a.size - b.size);
+            chosenArea = potentialAreas[0];
+
+            if (chosenArea.size > 0) {
+                if (chosenArea.type === 'trailItself') {
+                    for (let cell of chosenArea.areaCells) {
+                        grid[cell.x][cell.y] = ST_FILLED;
+                        score++;
+                    }
+                    filledSuccessfully = true;
+                    console.log("Filled 'trailItself' area. Size:", chosenArea.size);
+                } else { // 'emptyRegion'
+                    let startCellForFloodFill = chosenArea.candidateStartCell;
+                    if (!startCellForFloodFill || grid[startCellForFloodFill.x][startCellForFloodFill.y] !== ST_EMPTY) {
+                        // Fallback: find any ST_EMPTY cell from the areaCells if candidate is not valid (e.g. covered by another fill)
+                        startCellForFloodFill = chosenArea.areaCells.find(c => grid[c.x][c.y] === ST_EMPTY);
+                    }
+
+                    if (startCellForFloodFill) {
+                        floodFill(startCellForFloodFill.x, startCellForFloodFill.y, ST_EMPTY, ST_FILLED);
+                        filledSuccessfully = true;
+                        console.log("Filled 'emptyRegion' area. Size:", chosenArea.size, "Started from:", startCellForFloodFill);
+                    } else {
+                        console.log("Error: Chosen 'emptyRegion' (size " + chosenArea.size + ") has no ST_EMPTY start cell for floodFill.");
+                        filledSuccessfully = false;
+                        // This case implies the area identified by getAreaIfFilled was subsequently filled or made invalid
+                        // by another part of the process (e.g. if trail marking covered it).
+                        // This might happen if getAreaIfFilled doesn't use a temporary grid perfectly aligned with current state,
+                        // or if fillCandidates were on edges that became part of another fill.
+                        // For now, we just log and proceed to revert if this rare case happens.
+                    }
                 }
             }
-
-            for (let index of enemiesToRemoveIndices) {
-                enemies.splice(index, 1);
-                console.log("Inimigo removido da área preenchida.");
-            }
-            // Note: Player state (trailPath, isDrawingTrail) is reset in Player.update after this function.
-        } else {
-            // No valid fillable area found. Revert the trail path cells to their original states.
-            filledSuccessfully = false; // Ensure this is false
-            console.log("Nenhuma área válida para preenchimento encontrada. Revertendo trilha.");
-            for (let p_data of trailPathFromPlayer) {
-                grid[p_data.x][p_data.y] = p_data.originalStateGridBeforeTrail;
-            }
-            // Player state (trailPath, isDrawingTrail) is reset in Player.update after this function.
         }
 
-        // Player's trailPath and isDrawingTrail are reset by the Player class, so remove any direct manipulation here.
-        // if (!filledSuccessfully) {
-            // player.trailPath = []; // REMOVED
-            // player.isDrawingTrail = false; // REMOVED
-        // }
-        // The logic for resetting player.trailPath and player.isDrawingTrail
-        // is now centralized in the Player.update() method, after completeAreaFill returns.
+        if (filledSuccessfully) {
+            // This check ensures chosenArea and chosenArea.areaCells are defined.
+            if (chosenArea && chosenArea.areaCells) {
+                const enemiesToRemoveIndices = [];
+                for (let i = enemies.length - 1; i >= 0; i--) {
+                    const enemy = enemies[i];
+                    const enemyGridX = floor(enemy.position.x / GRID_SIZE);
+                    const enemyGridY = floor(enemy.position.y / GRID_SIZE);
 
+                    // Check if the enemy is within any of the cells that were part of the chosen filled area
+                    if (chosenArea.areaCells.some(cell => cell.x === enemyGridX && cell.y === enemyGridY)) {
+                        enemiesToRemoveIndices.push(i);
+                    }
+                }
+                for (let index of enemiesToRemoveIndices) {
+                    enemies.splice(index, 1);
+                    console.log("Inimigo removido da área preenchida.");
+                }
+            }
+        } else {
+            // If no area was successfully filled (either no potential areas, or chosen area failed to fill)
+            console.log("Nenhuma área preenchida ou fill failed. Revertendo trilha.");
+            for (let p_data of trailPathFromPlayer) {
+                // Revert all cells in the path to their state before the trail began
+                grid[p_data.x][p_data.y] = p_data.originalStateGridBeforeTrail;
+            }
+        }
+
+        // Player's trailPath and isDrawingTrail are reset by the Player class, so no direct manipulation here.
         checkLevelComplete();
     }
 
@@ -647,16 +666,18 @@
         let q = [{x: startX, y: startY}];
         let visited = new Set(); 
         visited.add(`${startX},${startY}`);
+        // IMPORTANT: Use a *copy* of the grid for this simulation to avoid side-effects
         let tempGrid = grid.map(arr => arr.slice()); 
 
         while (q.length > 0) {
             let curr = q.shift();
+            // Boundary and state checks are against the tempGrid
             if (curr.x < 0 || curr.x >= COLS || curr.y < 0 || curr.y >= ROWS || 
                 tempGrid[curr.x][curr.y] !== targetState) { 
                 continue;
             }
             area.push(curr);
-            tempGrid[curr.x][curr.y] = -1; 
+            tempGrid[curr.x][curr.y] = -1; // Mark as visited in the tempGrid
             const neighbors = [
                 {x: curr.x + 1, y: curr.y}, {x: curr.x - 1, y: curr.y},
                 {x: curr.x, y: curr.y + 1}, {x: curr.x, y: curr.y - 1}
@@ -696,14 +717,14 @@
                 let sHeight_before_clip = targetCanvasHeight / imageScale;
 
                 if ( (i === 0 && j === 0) || (i === 1 && j === 1) || (i === Math.floor(COLS/2) && j === Math.floor(ROWS/2)) ) {
-                    console.log(`--- Debugging drawGrid cell[${i}][${j}] ---`);
-                    console.log(`Canvas Cell (targetCanvasX,Y): ${targetCanvasX}, ${targetCanvasY}`);
-                    console.log(`imageOffset (X,Y): ${imageOffsetX}, ${imageOffsetY}`);
-                    console.log(`scaledImage (W,H): ${scaledImageWidth}, ${scaledImageHeight}`);
-                    console.log(`imageScale: ${imageScale}`);
-                    console.log(`originalImage (W,H): ${backgroundImage.width}, ${backgroundImage.height}`);
-                    console.log(`Pre-clip (sx,sy): ${sx_before_clip}, ${sy_before_clip}`);
-                    console.log(`Pre-clip (sWidth,sHeight): ${sWidth_before_clip}, ${sHeight_before_clip}`);
+                    // console.log(`--- Debugging drawGrid cell[${i}][${j}] ---`);
+                    // console.log(`Canvas Cell (targetCanvasX,Y): ${targetCanvasX}, ${targetCanvasY}`);
+                    // console.log(`imageOffset (X,Y): ${imageOffsetX}, ${imageOffsetY}`);
+                    // console.log(`scaledImage (W,H): ${scaledImageWidth}, ${scaledImageHeight}`);
+                    // console.log(`imageScale: ${imageScale}`);
+                    // console.log(`originalImage (W,H): ${backgroundImage.width}, ${backgroundImage.height}`);
+                    // console.log(`Pre-clip (sx,sy): ${sx_before_clip}, ${sy_before_clip}`);
+                    // console.log(`Pre-clip (sWidth,sHeight): ${sWidth_before_clip}, ${sHeight_before_clip}`);
                 }
 
                 let sx = sx_before_clip;
@@ -721,7 +742,7 @@
                     // This cell is outside the actual scaled image bounds on canvas,
                     // or the source dimensions are invalid. So, do nothing, leave it yellow.
                     if ( (i === 0 && j === 0) || (i === 1 && j === 1) || (i === Math.floor(COLS/2) && j === Math.floor(ROWS/2)) ) {
-                        console.log(`Cell [${i}][${j}] determined to be outside image bounds or sWidth/sHeight <=0 initially. Remains yellow.`);
+                        // console.log(`Cell [${i}][${j}] determined to be outside image bounds or sWidth/sHeight <=0 initially. Remains yellow.`);
                     }
                 } else {
                     // Further checks for sx, sy, sWidth, sHeight against original image dimensions
@@ -744,15 +765,15 @@
                     // Only draw if the adjusted source width/height are still positive
                     if (sWidth > 0 && sHeight > 0) {
                         if ( (i === 0 && j === 0) || (i === 1 && j === 1) || (i === Math.floor(COLS/2) && j === Math.floor(ROWS/2)) ) {
-                            console.log(`Post-clip (sx,sy): ${sx}, ${sy}`);
-                            console.log(`Post-clip (sWidth,sHeight): ${sWidth}, ${sHeight}`);
+                            // console.log(`Post-clip (sx,sy): ${sx}, ${sy}`);
+                            // console.log(`Post-clip (sWidth,sHeight): ${sWidth}, ${sHeight}`);
                         }
                         image(backgroundImage, 
                               dx, dy, targetCanvasWidth, targetCanvasHeight, // Destination on canvas
                               sx, sy, sWidth, sHeight);                    // Source from original image
                     } else {
                         if ( (i === 0 && j === 0) || (i === 1 && j === 1) || (i === Math.floor(COLS/2) && j === Math.floor(ROWS/2)) ) {
-                            console.log(`Cell [${i}][${j}] sWidth or sHeight became <=0 after clipping. sx:${sx}, sy:${sy}, sW:${sWidth}, sH:${sHeight}. Stays yellow.`);
+                            // console.log(`Cell [${i}][${j}] sWidth or sHeight became <=0 after clipping. sx:${sx}, sy:${sy}, sW:${sWidth}, sH:${sHeight}. Stays yellow.`);
                         }
                     }
                 }
