@@ -517,6 +517,7 @@
 
         grid[x][y] = replacementState; 
         score++;
+        if ((x === 10 && y === 10) || (x === Math.floor(COLS/2) && y === Math.floor(ROWS/2))) { console.log("[floodFill] Cell", x, y, "changed to state:", replacementState, "Global score is now:", score); }
 
         floodFill(x + 1, y, targetState, replacementState);
         floodFill(x - 1, y, targetState, replacementState);
@@ -525,6 +526,7 @@
     }
 
     function completeAreaFill(trailPathFromPlayer) {
+        console.log("[completeAreaFill] Called. trailPathFromPlayer.length:", trailPathFromPlayer.length);
         if (trailPathFromPlayer.length < 3) {
             for (let p_data of trailPathFromPlayer) {
                 grid[p_data.x][p_data.y] = p_data.originalStateGridBeforeTrail;
@@ -585,6 +587,7 @@
         if (trailItselfAreaCells.length > 0) {
             potentialAreas.push({ areaCells: trailItselfAreaCells, size: trailItselfAreaCells.length, type: 'trailItself', candidateStartCell: null });
         }
+        console.log("[completeAreaFill] potentialAreas:", JSON.stringify(potentialAreas.map(p => ({type: p.type, size: p.size}))));
 
         let chosenArea = null;
         let filledSuccessfully = false;
@@ -592,8 +595,22 @@
         if (potentialAreas.length > 0) {
             potentialAreas.sort((a, b) => a.size - b.size);
             chosenArea = potentialAreas[0];
+            if (chosenArea) { console.log("[completeAreaFill] chosenArea: type:", chosenArea.type, "size:", chosenArea.size); } else { console.log("[completeAreaFill] chosenArea is null"); }
 
-            if (chosenArea.size > 0) {
+            let heuristicPreventedFill = false;
+            if (chosenArea && chosenArea.type === 'emptyRegion' && totalFillableCells > 0) {
+                const chosenAreaRatio = chosenArea.size / totalFillableCells;
+                if (chosenAreaRatio > 0.30) { // Is it a large area?
+                    const trailItselfCandidate = potentialAreas.find(p => p.type === 'trailItself');
+                    // Was trailItself also a candidate? And was it larger than the chosen main field area?
+                    if (trailItselfCandidate && trailItselfCandidate.size > chosenArea.size) {
+                        console.log("[completeAreaFill] Heuristic: Main field was chosen (size " + chosenArea.size + ") because trailItself was larger (size " + trailItselfCandidate.size + "). Preventing large fill, will revert trail.");
+                        heuristicPreventedFill = true;
+                    }
+                }
+            }
+
+            if (!heuristicPreventedFill && chosenArea && chosenArea.size > 0) {
                 if (chosenArea.type === 'trailItself') {
                     for (let cell of chosenArea.areaCells) {
                         grid[cell.x][cell.y] = ST_FILLED;
@@ -623,9 +640,18 @@
                     }
                 }
             }
+        } else { // This else now catches (heuristicPreventedFill) OR (!chosenArea) OR (chosenArea.size <=0)
+            if(heuristicPreventedFill){
+               console.log("[completeAreaFill] Heuristic prevented fill.");
+            } else {
+               console.log("[completeAreaFill] No valid chosenArea or chosenArea.size is 0, or other fill failure.");
+            }
+            filledSuccessfully = false; // Ensure reversion if fill didn't happen for any reason
         }
 
+
         if (filledSuccessfully) {
+            console.log("[completeAreaFill] Before enemy removal. enemies.length:", enemies.length);
             // This check ensures chosenArea and chosenArea.areaCells are defined.
             if (chosenArea && chosenArea.areaCells) {
                 const enemiesToRemoveIndices = [];
@@ -643,6 +669,7 @@
                     enemies.splice(index, 1);
                     console.log("Inimigo removido da área preenchida.");
                 }
+                console.log("[completeAreaFill] After enemy removal. enemies.length:", enemies.length);
             }
         } else {
             // If no area was successfully filled (either no potential areas, or chosen area failed to fill)
@@ -654,6 +681,7 @@
         }
 
         // Player's trailPath and isDrawingTrail are reset by the Player class, so no direct manipulation here.
+        console.log("[completeAreaFill] Ending. filledSuccessfully:", filledSuccessfully);
         checkLevelComplete();
     }
 
@@ -693,6 +721,7 @@
     }
 
     function drawGrid() {
+      console.log("[drawGrid] Starting. Sample cells: grid[10][10]=", (COLS > 10 && ROWS > 10 && grid[10] ? grid[10][10] : 'undef'), "grid[COLS/2][ROWS/2]=", (COLS > 0 && ROWS > 0 && grid[Math.floor(COLS/2)] ? grid[Math.floor(COLS/2)][Math.floor(ROWS/2)] : 'undef') );
       noStroke(); // Call noStroke once for the entire grid drawing
       for (let i = 0; i < COLS; i++) {
         for (let j = 0; j < ROWS; j++) {
@@ -1023,6 +1052,7 @@
         textAlign(CENTER, CENTER);
         text("NÍVEL COMPLETO!", width / 2, height / 2 - (GRID_SIZE * 4)); 
       }
+      console.log("[draw()] Frame completed. gameState:", gameState);
     }
 
     function drawRestartButton(label = "Reiniciar") {
