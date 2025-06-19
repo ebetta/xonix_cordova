@@ -118,35 +118,55 @@
 
             const nextCellState = grid[nextX][nextY];
             if (this.isDrawingTrail) {
-                if (nextCellState === ST_FILLED) { 
-                    grid[this.x][this.y] = ST_TRAIL; 
-                    this.trailPath.push({ x: this.x, y: this.y });
-                    this.x = nextX; 
+                if (nextCellState === ST_FILLED) {
+                    // Player is drawing a trail and hits a filled cell - completes the trail
+                    grid[this.x][this.y] = ST_TRAIL; // Mark current cell as part of the trail
+                    this.trailPath.push({ x: this.x, y: this.y, originalStateGridBeforeTrail: ST_EMPTY }); // Current cell was empty before becoming trail
+
+                    this.x = nextX; // Move player to the landing cell
                     this.y = nextY;
-                    this.trailPath.push({ x: this.x, y: this.y }); 
-                    completeAreaFill(this.trailPath); 
-                    this.isDrawingTrail = false;
-                    this.trailPath = [];
-                    grid[this.x][this.y] = ST_FILLED; 
-                    this.dx = 0; 
+                    // The landing cell itself was ST_FILLED, this is important for its originalState.
+                    this.trailPath.push({ x: this.x, y: this.y, originalStateGridBeforeTrail: ST_FILLED });
+
+                    completeAreaFill(this.trailPath); // Pass the collected path
+
+                    this.isDrawingTrail = false; // Reset trail drawing state
+                    this.trailPath = []; // Clear the path AFTER completion
+                    // grid[this.x][this.y] = ST_FILLED; // Landing cell remains ST_FILLED, no change needed here by player update
+                    this.dx = 0; // Stop player movement
                     this.dy = 0;
-                } else if (nextCellState === ST_TRAIL) { 
+                } else if (nextCellState === ST_TRAIL) {
+                    // Player crossed their own trail
                     console.log("Jogador cruzou a própria trilha!");
+                    // Revert trail cells to their original state before game over
+                    for (let segment of this.trailPath) {
+                        grid[segment.x][segment.y] = segment.originalStateGridBeforeTrail;
+                    }
                     gameOver();
                     return;
-                } else { 
-                    grid[this.x][this.y] = ST_TRAIL; 
-                    this.trailPath.push({ x: this.x, y: this.y });
-                    this.x = nextX;
+                } else { // nextCellState === ST_EMPTY
+                    // Continue drawing trail on an empty cell
+                    grid[this.x][this.y] = ST_TRAIL; // Mark current cell as part of the trail
+                    this.trailPath.push({ x: this.x, y: this.y, originalStateGridBeforeTrail: ST_EMPTY }); // Current cell was empty
+
+                    this.x = nextX; // Move player
                     this.y = nextY;
+                    // The new cell player is on is now part of the trail, but it's not added to trailPath here.
+                    // It will be added in the next update cycle when the player moves *from* it.
+                    // Or, if this is the cell *before* hitting ST_FILLED, it's added right before completion.
                 }
-            } else { 
-                if (nextCellState === ST_EMPTY) { 
+            } else { // Not currently drawing a trail
+                if (nextCellState === ST_EMPTY) {
+                    // Player is on a filled cell and moves to an empty cell - starts drawing a trail
                     this.isDrawingTrail = true;
-                    this.trailPath = [{ x: this.x, y: this.y }]; 
-                    this.x = nextX; 
+                    // The cell the player is *leaving* was ST_FILLED.
+                    this.trailPath = [{ x: this.x, y: this.y, originalStateGridBeforeTrail: grid[this.x][this.y] }]; // Capture original state of starting point
+
+                    this.x = nextX; // Move player
                     this.y = nextY;
-                } else { 
+                    // The cell player is now on (nextX, nextY) was ST_EMPTY. It will be marked ST_TRAIL in the next update
+                    // if the trail continues, or its original state (ST_EMPTY) will be recorded as such.
+                } else { // Player is on a filled cell and moves to another filled cell
                     this.x = nextX;
                     this.y = nextY;
                 }
@@ -504,36 +524,51 @@
         floodFill(x, y - 1, targetState, replacementState);
     }
 
-    function completeAreaFill(trailPath) {
-        if (trailPath.length < 3) { 
-            for (let p of trailPath) {
-                if (grid[p.x][p.y] === ST_TRAIL) grid[p.x][p.y] = ST_EMPTY; 
+    function completeAreaFill(trailPathFromPlayer) { // Renamed parameter
+        // If trailPathFromPlayer has less than 3 segments, it's too short to form an area.
+        // Revert grid cells to their original state before the trail was drawn.
+        if (trailPathFromPlayer.length < 3) {
+            for (let p_data of trailPathFromPlayer) {
+                // Ensure that we only revert actual trail segments, not the landing ST_FILLED cell if it was part of a short path.
+                // The originalStateGridBeforeTrail for the last point on a successful fill is ST_FILLED.
+                // For incomplete/short paths, if a point was ST_FILLED and player landed on it, it should remain ST_FILLED.
+                // The path points that were ST_EMPTY and became ST_TRAIL should revert to ST_EMPTY.
+                // The starting point of the trail (which was ST_FILLED) should revert to ST_FILLED.
+                grid[p_data.x][p_data.y] = p_data.originalStateGridBeforeTrail;
             }
-            player.trailPath = [];
-            player.isDrawingTrail = false;
+            // Player's trailPath and isDrawingTrail are reset by the Player class.
             return;
         }
-        
-        let trailOriginalStates = trailPath.map(p => ({x: p.x, y: p.y, state: grid[p.x][p.y]}));
-        for (let p of trailPath) {
-            grid[p.x][p.y] = ST_FILLED;
+
+        // Temporarily mark the entire path as ST_FILLED to define the boundary for flood fill.
+        // The original states are preserved in trailPathFromPlayer.
+        for (let p_data of trailPathFromPlayer) {
+            grid[p_data.x][p_data.y] = ST_FILLED;
         }
 
         let fillCandidates = [];
-        for (let i = 0; i < trailPath.length -1; i++) { 
-            const p1 = trailPath[i];
-            const p2 = trailPath[i+1]; 
-            let dx = p2.x - p1.x; 
+        // Iterate up to trailPathFromPlayer.length - 2 because the last point is the landing FILLED cell.
+        // We need pairs of points from the path to determine sides for fill candidates.
+        for (let i = 0; i < trailPathFromPlayer.length - 1; i++) {
+            const p1 = trailPathFromPlayer[i];
+            const p2 = trailPathFromPlayer[i+1];
+            let dx = p2.x - p1.x;
             let dy = p2.y - p1.y;
-            let side1X = p1.x - dy; let side1Y = p1.y + dx;
-            let side2X = p1.x + dy; let side2Y = p1.y - dx;
-            if (isValidForFillStart(side1X, side1Y)) fillCandidates.push({x: side1X, y: side1Y});
-            if (isValidForFillStart(side2X, side2Y)) fillCandidates.push({x: side2X, y: side2Y});
-             side1X = p2.x - dy;  side1Y = p2.y + dx;
-             side2X = p2.x + dy;  side2Y = p2.y - dx;
-             if (isValidForFillStart(side1X, side1Y)) fillCandidates.push({x: side1X, y: side1Y});
-             if (isValidForFillStart(side2X, side2Y)) fillCandidates.push({x: side2X, y: side2Y});
+
+            // Candidate 1: (p1.x - dy, p1.y + dx)
+            // Candidate 2: (p1.x + dy, p1.y - dx)
+            // These are potential start points for flood fill on either side of the segment p1-p2
+            let side1X_p1 = p1.x - dy; let side1Y_p1 = p1.y + dx;
+            let side2X_p1 = p1.x + dy; let side2Y_p1 = p1.y - dx;
+
+            if (isValidForFillStart(side1X_p1, side1Y_p1)) fillCandidates.push({x: side1X_p1, y: side1Y_p1});
+            if (isValidForFillStart(side2X_p1, side2Y_p1)) fillCandidates.push({x: side2X_p1, y: side2Y_p1});
+
+            // Also consider candidates based on p2 (excluding the very last point of the trail path if it's the landing FILLED cell)
+            // The logic for candidate generation might need refinement based on how trailPathFromPlayer includes the final landing cell.
+            // For now, using p1 and p2 of each segment is standard.
         }
+        // Remove duplicate candidates
         fillCandidates = fillCandidates.filter((item, index, self) =>
             index === self.findIndex((t) => (t.x === item.x && t.y === item.y))
         );
@@ -541,40 +576,31 @@
         let smallestAreaSize = Infinity;
         let chosenCandidate = null;
         let smallestPotentialAreaCells = null;
-        let filledSuccessfully = false; // Added to track if a fill occurs
+        let filledSuccessfully = false;
 
         for (let candidate of fillCandidates) {
-            // Ensure the candidate cell itself is valid for starting a fill.
-            // isValidForFillStart already checks this, but an explicit grid check is fine.
-            if (grid[candidate.x][candidate.y] !== ST_EMPTY) {
-                // console.log("Candidato não está em ST_EMPTY, pulando:", candidate);
+            if (grid[candidate.x][candidate.y] !== ST_EMPTY) { // Should be ST_EMPTY to be a valid start for fill
                 continue;
             }
-
-            // getAreaIfFilled returns all cells that would be filled starting from this candidate.
-            // It uses a temporary grid, so it doesn't modify the actual 'grid'.
             let potentialArea = getAreaIfFilled(candidate.x, candidate.y, ST_EMPTY);
-
             if (potentialArea.length > 0 && potentialArea.length < smallestAreaSize) {
+                // Check if this area contains any part of the player enemy (if applicable and exists)
+                // This check is an example, actual enemy logic might differ.
+                // For now, we assume any valid smallest area is fine.
                 smallestAreaSize = potentialArea.length;
                 chosenCandidate = candidate;
                 smallestPotentialAreaCells = potentialArea;
-                // console.log("Novo candidato a menor área:", chosenCandidate, "Tamanho:", smallestAreaSize);
             }
         }
 
         if (chosenCandidate) {
             console.log("Menor área escolhida para preenchimento:", chosenCandidate, "Tamanho:", smallestAreaSize);
-
-            // Perform the fill
             floodFill(chosenCandidate.x, chosenCandidate.y, ST_EMPTY, ST_FILLED);
-            filledSuccessfully = true;
+            filledSuccessfully = true; // Mark that a fill operation was successful.
 
-            // Reset player's trail state *before* enemy processing
-            player.isDrawingTrail = false;
-            player.trailPath = [];
+            // Player's trailPath and isDrawingTrail are reset by the Player class after this function returns.
 
-            // Remove enemies within the filled area (smallestPotentialAreaCells)
+            // Remove enemies within the filled area
             const enemiesToRemoveIndices = [];
             for (let i = enemies.length - 1; i >= 0; i--) {
                 const enemy = enemies[i];
@@ -590,52 +616,26 @@
                 enemies.splice(index, 1);
                 console.log("Inimigo removido da área preenchida.");
             }
-
+            // Note: Player state (trailPath, isDrawingTrail) is reset in Player.update after this function.
         } else {
-            // No valid fillable area found among any candidates.
-            filledSuccessfully = false; // Ensure it's false if no candidate was chosen
-            console.log("Nenhuma área válida para preenchimento encontrada. Revertendo trilha para vazia.");
-            for (let cell of trailOriginalStates) {
-                // Only revert cells that were part of the trail and are currently ST_FILLED
-                // And are not border cells (though trailOriginalStates should only contain non-border cells if trail starts correctly)
-                if (grid[cell.x][cell.y] === ST_FILLED && !(cell.x === 0 || cell.x === COLS - 1 || cell.y === 0 || cell.y === ROWS - 1)) {
-                    // Revert to ST_EMPTY only if its original state in trailOriginalStates was ST_TRAIL
-                    // (Actually, trailPath members are pushed before grid state changes in player.update,
-                    // then this function sets them to ST_FILLED. So their original state in grid *before* this function
-                    // was called could be ST_EMPTY or ST_TRAIL from player drawing)
-                    // The safest is to revert to ST_EMPTY as they were part of a temporary trail.
-                    if (trailOriginalStates.find(tos => tos.x === cell.x && tos.y === cell.y && tos.state === ST_TRAIL)) {
-                         grid[cell.x][cell.y] = ST_EMPTY;
-                    } else {
-                        // If it was ST_EMPTY and part of the trail path that got converted to ST_FILLED, also revert.
-                        // This condition is complex. Simpler: if it's in trailOriginalStates, it was part of the drawn path.
-                        // The initial loop `for (let p of trailPath) { grid[p.x][p.y] = ST_FILLED; }` turned them ST_FILLED.
-                        // So, we should revert them to ST_EMPTY if they were part of the path.
-                         grid[cell.x][cell.y] = ST_EMPTY; // Simplified: if it was part of the trail, now revert.
-                    }
-                }
+            // No valid fillable area found. Revert the trail path cells to their original states.
+            filledSuccessfully = false; // Ensure this is false
+            console.log("Nenhuma área válida para preenchimento encontrada. Revertendo trilha.");
+            for (let p_data of trailPathFromPlayer) {
+                grid[p_data.x][p_data.y] = p_data.originalStateGridBeforeTrail;
             }
-             // Ensure all cells in trailOriginalStates that are currently ST_FILLED (due to this function's start)
-            // are reverted to ST_EMPTY if they are not permanent border walls.
-            for (let p of trailOriginalStates) {
-                if (grid[p.x][p.y] === ST_FILLED && !(p.x === 0 || p.x === COLS - 1 || p.y === 0 || p.y === ROWS - 1)) {
-                    grid[p.x][p.y] = ST_EMPTY;
-                }
-            }
+            // Player state (trailPath, isDrawingTrail) is reset in Player.update after this function.
         }
 
-        // Reset player trail state if not already reset (e.g., if fill wasn't successful)
-        // If fill was successful, this is redundant but harmless as it's already done.
-        // If fill was NOT successful, this is where the reset happens.
-        if (!filledSuccessfully) {
-            player.trailPath = [];
-            player.isDrawingTrail = false;
-        }
-        // If filledSuccessfully IS true, trailPath and isDrawingTrail were cleared *before* enemy processing.
-        // So, explicitly DO NOT reset them here again if filledSuccessfully is true, to respect the new order.
-        // The final state of player.trailPath and player.isDrawingTrail should be empty/false.
+        // Player's trailPath and isDrawingTrail are reset by the Player class, so remove any direct manipulation here.
+        // if (!filledSuccessfully) {
+            // player.trailPath = []; // REMOVED
+            // player.isDrawingTrail = false; // REMOVED
+        // }
+        // The logic for resetting player.trailPath and player.isDrawingTrail
+        // is now centralized in the Player.update() method, after completeAreaFill returns.
 
-        checkLevelComplete(); 
+        checkLevelComplete();
     }
 
     function isValidForFillStart(x,y){
