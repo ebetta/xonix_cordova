@@ -128,7 +128,8 @@
                     // The landing cell itself was ST_FILLED, this is important for its originalState.
                     this.trailPath.push({ x: this.x, y: this.y, originalStateGridBeforeTrail: ST_FILLED });
 
-                    completeAreaFill(this.trailPath); // Pass the collected path
+                    let isBorderClosure = (nextX === 0 || nextX === COLS - 1 || nextY === 0 || nextY === ROWS - 1);
+                    completeAreaFill(this.trailPath, isBorderClosure); // Pass the collected path and border status
 
                     this.isDrawingTrail = false; // Reset trail drawing state
                     this.trailPath = []; // Clear the path AFTER completion
@@ -525,86 +526,120 @@
         floodFill(x, y - 1, targetState, replacementState);
     }
 
-    function completeAreaFill(trailPathFromPlayer) {
-        console.log("[completeAreaFill] Called. trailPathFromPlayer.length:", trailPathFromPlayer.length);
+    // Add isBorderClosure to the function signature
+    function completeAreaFill(trailPathFromPlayer, isBorderClosure) {
+        console.log("[completeAreaFill] Called. trailPathFromPlayer.length:", trailPathFromPlayer.length, "isBorderClosure:", isBorderClosure);
+
         if (trailPathFromPlayer.length < 3) {
             for (let p_data of trailPathFromPlayer) {
                 grid[p_data.x][p_data.y] = p_data.originalStateGridBeforeTrail;
             }
+            // console.log("[completeAreaFill] Path too short, reverted."); // Keep or adjust logs
+            checkLevelComplete(); // Call checkLevelComplete even for short paths as score might have changed elsewhere or this is end of turn
             return;
         }
 
-        // Temporarily mark all cells in the current path as ST_FILLED for boundary detection
-        for (let p_data of trailPathFromPlayer) {
-            grid[p_data.x][p_data.y] = ST_FILLED;
-        }
-
-        let fillCandidates = [];
-        for (let i = 0; i < trailPathFromPlayer.length -1; i++) {
-            const p1 = trailPathFromPlayer[i];
-            const p2 = trailPathFromPlayer[i+1];
-            let dx = p2.x - p1.x;
-            let dy = p2.y - p1.y;
-            let side1X, side1Y, side2X, side2Y;
-
-            side1X = p1.x - dy; side1Y = p1.y + dx;
-            side2X = p1.x + dy; side2Y = p1.y - dx;
-            if (isValidForFillStart(side1X, side1Y)) fillCandidates.push({x: side1X, y: side1Y});
-            if (isValidForFillStart(side2X, side2Y)) fillCandidates.push({x: side2X, y: side2Y});
-
-            side1X = p2.x - dy;  side1Y = p2.y + dx;
-            side2X = p2.x + dy;  side2Y = p2.y - dx;
-            if (isValidForFillStart(side1X, side1Y)) fillCandidates.push({x: side1X, y: side1Y});
-            if (isValidForFillStart(side2X, side2Y)) fillCandidates.push({x: side2X, y: side2Y});
-        }
-        fillCandidates = fillCandidates.filter((item, index, self) =>
-            index === self.findIndex((t) => (t.x === item.x && t.y === item.y))
-        );
-
-        let potentialAreas = []; // Stores { areaCells: [], size: number, type: 'emptyRegion' | 'trailItself', candidateStartCell: {} }
-
-        let visitedCandidateCellsForAreaCalc = new Set();
-        for (let candidate of fillCandidates) {
-            const candidateKey = `${candidate.x},${candidate.y}`;
-            if (visitedCandidateCellsForAreaCalc.has(candidateKey) || grid[candidate.x][candidate.y] !== ST_EMPTY) {
-                continue;
-            }
-
-            let areaCells = getAreaIfFilled(candidate.x, candidate.y, ST_EMPTY);
-            if (areaCells.length > 0) {
-                potentialAreas.push({ areaCells: areaCells, size: areaCells.length, type: 'emptyRegion', candidateStartCell: candidate });
-                areaCells.forEach(cell => visitedCandidateCellsForAreaCalc.add(`${cell.x},${cell.y}`));
-            }
-        }
-
-        let trailItselfAreaCells = [];
-        for (let p_data of trailPathFromPlayer) {
-            if (p_data.originalStateGridBeforeTrail === ST_EMPTY) {
-                trailItselfAreaCells.push({ x: p_data.x, y: p_data.y });
-            }
-        }
-
-        if (trailItselfAreaCells.length > 0) {
-            potentialAreas.push({ areaCells: trailItselfAreaCells, size: trailItselfAreaCells.length, type: 'trailItself', candidateStartCell: null });
-        }
-        console.log("[completeAreaFill] potentialAreas:", JSON.stringify(potentialAreas.map(p => ({type: p.type, size: p.size}))));
-
-        let chosenArea = null;
         let filledSuccessfully = false;
+        let chosenAreaForEnemyRemoval = null; // To store areaCells for enemy removal
 
-        if (potentialAreas.length > 0) {
-            potentialAreas.sort((a, b) => a.size - b.size);
-            chosenArea = potentialAreas[0];
-            if (chosenArea) { console.log("[completeAreaFill] chosenArea: type:", chosenArea.type, "size:", chosenArea.size); } else { console.log("[completeAreaFill] chosenArea is null"); }
+        if (isBorderClosure) {
+            console.log("[completeAreaFill] Border closure path activated.");
+            let trailItselfAreaCells = [];
+            for (let p_data of trailPathFromPlayer) {
+                if (p_data.originalStateGridBeforeTrail === ST_EMPTY) {
+                    trailItselfAreaCells.push({ x: p_data.x, y: p_data.y });
+                }
+            }
+
+            if (trailItselfAreaCells.length > 0) {
+                console.log("[completeAreaFill] Border closure: Filling 'trailItself' area of size:", trailItselfAreaCells.length);
+                for (let cell of trailItselfAreaCells) {
+                    grid[cell.x][cell.y] = ST_FILLED; // Mark as filled
+                    score++; // Increment global score
+                }
+                filledSuccessfully = true;
+                chosenAreaForEnemyRemoval = trailItselfAreaCells; // For enemy removal
+
+                // Also ensure the border parts of the trail remain ST_FILLED
+                for (let p_data of trailPathFromPlayer) {
+                    if (p_data.originalStateGridBeforeTrail === ST_FILLED) {
+                        grid[p_data.x][p_data.y] = ST_FILLED;
+                    }
+                }
+            } else {
+                console.log("[completeAreaFill] Border closure: 'trailItself' is empty. No fill.");
+                filledSuccessfully = false; // This will lead to trail reversion later
+            }
+        } else { // Not a border closure, use existing general logic (with heuristics)
+            console.log("[completeAreaFill] Non-border closure path activated (general logic).");
+            // Temporarily mark all cells in the current path as ST_FILLED for boundary detection
+            for (let p_data of trailPathFromPlayer) {
+                grid[p_data.x][p_data.y] = ST_FILLED;
+            }
+
+            let fillCandidates = [];
+            // ... (Standard fillCandidates generation logic as before) ...
+            for (let i = 0; i < trailPathFromPlayer.length -1; i++) {
+                const p1 = trailPathFromPlayer[i];
+                const p2 = trailPathFromPlayer[i+1];
+                let dx = p2.x - p1.x;
+                let dy = p2.y - p1.y;
+                let side1X, side1Y, side2X, side2Y;
+                side1X = p1.x - dy; side1Y = p1.y + dx;
+                side2X = p1.x + dy; side2Y = p1.y - dx;
+                if (isValidForFillStart(side1X, side1Y)) fillCandidates.push({x: side1X, y: side1Y});
+                if (isValidForFillStart(side2X, side2Y)) fillCandidates.push({x: side2X, y: side2Y});
+                side1X = p2.x - dy;  side1Y = p2.y + dx;
+                side2X = p2.x + dy;  side2Y = p2.y - dx;
+                if (isValidForFillStart(side1X, side1Y)) fillCandidates.push({x: side1X, y: side1Y});
+                if (isValidForFillStart(side2X, side2Y)) fillCandidates.push({x: side2X, y: side2Y});
+            }
+            fillCandidates = fillCandidates.filter((item, index, self) =>
+                index === self.findIndex((t) => (t.x === item.x && t.y === item.y))
+            );
+
+            let potentialAreas = [];
+            let visitedCandidateCellsForAreaCalc = new Set();
+            for (let candidate of fillCandidates) {
+                const candidateKey = `${candidate.x},${candidate.y}`;
+                if (visitedCandidateCellsForAreaCalc.has(candidateKey) || grid[candidate.x][candidate.y] !== ST_EMPTY) {
+                    continue;
+                }
+                let areaCells = getAreaIfFilled(candidate.x, candidate.y, ST_EMPTY);
+                if (areaCells.length > 0) {
+                    potentialAreas.push({ areaCells: areaCells, size: areaCells.length, type: 'emptyRegion', candidateStartCell: candidate });
+                    areaCells.forEach(cell => visitedCandidateCellsForAreaCalc.add(`${cell.x},${cell.y}`));
+                }
+            }
+
+            let trailItselfAreaCellsGeneral = []; // Renamed to avoid conflict
+            for (let p_data of trailPathFromPlayer) {
+                if (p_data.originalStateGridBeforeTrail === ST_EMPTY) {
+                    trailItselfAreaCellsGeneral.push({ x: p_data.x, y: p_data.y });
+                }
+            }
+            if (trailItselfAreaCellsGeneral.length > 0) {
+                potentialAreas.push({ areaCells: trailItselfAreaCellsGeneral, size: trailItselfAreaCellsGeneral.length, type: 'trailItself', candidateStartCell: null });
+            }
+
+            console.log("[completeAreaFill] General logic - potentialAreas:", JSON.stringify(potentialAreas.map(p => ({type: p.type, size: p.size}))));
+
+            let chosenArea = null;
+            if (potentialAreas.length > 0) {
+                potentialAreas.sort((a, b) => a.size - b.size);
+                chosenArea = potentialAreas[0];
+            }
+
+            if (chosenArea) { console.log("[completeAreaFill] General logic - chosenArea: type:", chosenArea.type, "size:", chosenArea.size); }
+            else { console.log("[completeAreaFill] General logic - chosenArea is null"); }
 
             let heuristicPreventedFill = false;
             if (chosenArea && chosenArea.type === 'emptyRegion' && totalFillableCells > 0) {
                 const chosenAreaRatio = chosenArea.size / totalFillableCells;
-                if (chosenAreaRatio > 0.30) { // Is it a large area?
+                if (chosenAreaRatio > 0.30) {
                     const trailItselfCandidate = potentialAreas.find(p => p.type === 'trailItself');
-                    // Was trailItself also a candidate? And was it larger than the chosen main field area?
                     if (trailItselfCandidate && trailItselfCandidate.size > chosenArea.size) {
-                        console.log("[completeAreaFill] Heuristic: Main field was chosen (size " + chosenArea.size + ") because trailItself was larger (size " + trailItselfCandidate.size + "). Preventing large fill, will revert trail.");
+                        console.log("[completeAreaFill] Heuristic: Main field (size " + chosenArea.size + ") chosen due to long trail (size " + trailItselfCandidate.size + "). Preventing fill.");
                         heuristicPreventedFill = true;
                     }
                 }
@@ -617,70 +652,56 @@
                         score++;
                     }
                     filledSuccessfully = true;
-                    console.log("Filled 'trailItself' area. Size:", chosenArea.size);
+                    chosenAreaForEnemyRemoval = chosenArea.areaCells;
+                    console.log("[completeAreaFill] General logic - Filled 'trailItself' area. Size:", chosenArea.size);
                 } else { // 'emptyRegion'
                     let startCellForFloodFill = chosenArea.candidateStartCell;
                     if (!startCellForFloodFill || grid[startCellForFloodFill.x][startCellForFloodFill.y] !== ST_EMPTY) {
-                        // Fallback: find any ST_EMPTY cell from the areaCells if candidate is not valid (e.g. covered by another fill)
                         startCellForFloodFill = chosenArea.areaCells.find(c => grid[c.x][c.y] === ST_EMPTY);
                     }
-
                     if (startCellForFloodFill) {
                         floodFill(startCellForFloodFill.x, startCellForFloodFill.y, ST_EMPTY, ST_FILLED);
                         filledSuccessfully = true;
-                        console.log("Filled 'emptyRegion' area. Size:", chosenArea.size, "Started from:", startCellForFloodFill);
+                        chosenAreaForEnemyRemoval = chosenArea.areaCells; // floodFill doesn't return cells, so use original list
+                        console.log("[completeAreaFill] General logic - Filled 'emptyRegion' area. Size:", chosenArea.size, "Started from:", startCellForFloodFill);
                     } else {
-                        console.log("Error: Chosen 'emptyRegion' (size " + chosenArea.size + ") has no ST_EMPTY start cell for floodFill.");
+                        console.log("[completeAreaFill] General logic - Error: Chosen 'emptyRegion' has no ST_EMPTY start cell.");
                         filledSuccessfully = false;
-                        // This case implies the area identified by getAreaIfFilled was subsequently filled or made invalid
-                        // by another part of the process (e.g. if trail marking covered it).
-                        // This might happen if getAreaIfFilled doesn't use a temporary grid perfectly aligned with current state,
-                        // or if fillCandidates were on edges that became part of another fill.
-                        // For now, we just log and proceed to revert if this rare case happens.
                     }
                 }
-            }
-        } else { // This else now catches (heuristicPreventedFill) OR (!chosenArea) OR (chosenArea.size <=0)
-            if(heuristicPreventedFill){
-               console.log("[completeAreaFill] Heuristic prevented fill.");
             } else {
-               console.log("[completeAreaFill] No valid chosenArea or chosenArea.size is 0, or other fill failure.");
+                if(heuristicPreventedFill){ console.log("[completeAreaFill] General logic - Heuristic prevented fill."); }
+                else { console.log("[completeAreaFill] General logic - No valid chosenArea or chosenArea.size is 0, or other fill failure."); }
+                filledSuccessfully = false; // Ensure reversion if fill didn't happen for any reason
             }
-            filledSuccessfully = false; // Ensure reversion if fill didn't happen for any reason
-        }
+        } // End of if(!isBorderClosure) else (general logic)
 
-
+        // Common post-fill logic
         if (filledSuccessfully) {
-            console.log("[completeAreaFill] Before enemy removal. enemies.length:", enemies.length);
-            // This check ensures chosenArea and chosenArea.areaCells are defined.
-            if (chosenArea && chosenArea.areaCells) {
+            console.log("[completeAreaFill] Before enemy removal. enemies.length:", enemies.length, "chosenAreaForEnemyRemoval.length:", chosenAreaForEnemyRemoval ? chosenAreaForEnemyRemoval.length : 'null');
+            if (chosenAreaForEnemyRemoval) { // Ensure it's not null
                 const enemiesToRemoveIndices = [];
                 for (let i = enemies.length - 1; i >= 0; i--) {
                     const enemy = enemies[i];
                     const enemyGridX = floor(enemy.position.x / GRID_SIZE);
                     const enemyGridY = floor(enemy.position.y / GRID_SIZE);
-
-                    // Check if the enemy is within any of the cells that were part of the chosen filled area
-                    if (chosenArea.areaCells.some(cell => cell.x === enemyGridX && cell.y === enemyGridY)) {
+                    if (chosenAreaForEnemyRemoval.some(cell => cell.x === enemyGridX && cell.y === enemyGridY)) {
                         enemiesToRemoveIndices.push(i);
                     }
                 }
                 for (let index of enemiesToRemoveIndices) {
                     enemies.splice(index, 1);
-                    console.log("Inimigo removido da área preenchida.");
                 }
                 console.log("[completeAreaFill] After enemy removal. enemies.length:", enemies.length);
             }
         } else {
-            // If no area was successfully filled (either no potential areas, or chosen area failed to fill)
-            console.log("Nenhuma área preenchida ou fill failed. Revertendo trilha.");
+            console.log("[completeAreaFill] No fill occurred or fill failed. Reverting trail.");
+            // Revert all cells of the trail path to their state *before this trail drawing episode began*.
             for (let p_data of trailPathFromPlayer) {
-                // Revert all cells in the path to their state before the trail began
                 grid[p_data.x][p_data.y] = p_data.originalStateGridBeforeTrail;
             }
         }
 
-        // Player's trailPath and isDrawingTrail are reset by the Player class, so no direct manipulation here.
         console.log("[completeAreaFill] Ending. filledSuccessfully:", filledSuccessfully);
         checkLevelComplete();
     }
@@ -956,19 +977,6 @@
         }
       );
 
-      // Remove old caterpillarImage loading
-      // console.log("Attempting to load image: www/img/cima_trasp2.png");
-      // caterpillarImage = loadImage(
-      //   'img/cima_trasp2.png', // Path relative to www/ or where index.html is
-      //   img => {
-      //     console.log('Caterpillar image loaded successfully. Width:', img.width);
-      //   },
-      //   err => {
-      //     console.error('Error loading caterpillar image:', err);
-      //     caterpillarImage = null; // Explicitly set to null on error
-      //   }
-      // );
-
       caterpillarUpImage = loadImage('img/cima.png',
         img => console.log('Caterpillar Up image loaded successfully. Width:', img.width),
         err => console.error('Error loading Caterpillar Up image:', err)
@@ -1005,30 +1013,23 @@
 
     function draw() {
       if (gameState === 'splashScreen') {
-        // We don't need to draw anything on the canvas for the splash,
-        // as it's an HTML overlay. We just count time.
-        splashScreenTimer += deltaTime; // p5.js provides deltaTime
+        splashScreenTimer += deltaTime;
 
         if (splashScreenTimer >= SPLASH_DURATION) {
           if (splashScreenImage) {
             splashScreenImage.style.display = 'none';
           }
           gameState = 'playing';
-          resetGame(); // Initialize the game after splash screen
+          resetGame();
         }
-        // It's important to return here or ensure no other drawing happens
-        // if the splash is active and you don't want the canvas visible yet.
-        // However, since the splash is an overlay, the canvas will be drawn underneath.
-        // If a black background is desired for the canvas during splash, it can be added.
-        // background(0); // Optional: if you want to ensure canvas is black behind splash
-        return; // Stop further drawing in this frame if splash is active
+        return;
       }
 
       if (gameState === 'playing') {
         if (currentTouchButtonDirection.dx !== 0 || currentTouchButtonDirection.dy !== 0) {
             player.setDirection(currentTouchButtonDirection.dx, currentTouchButtonDirection.dy);
         }
-        background(0); // Reverted to original black background
+        background(0);
         drawGrid();
         player.update(); 
         player.draw();
@@ -1108,7 +1109,6 @@
                 } else { 
                     player.setDirection(0, diffY > 0 ? 1 : -1);
                 }
-                // *** ATUALIZA touchStartX/Y para permitir mudança de direção contínua ***
                 touchStartX = currentX;
                 touchStartY = currentY;
                 
@@ -1124,7 +1124,6 @@
     function touchEnded(event) { 
         if (isSwiping) { 
             isSwiping = false;
-            // *** ADICIONADO: Para o jogador quando o swipe termina ***
             player.setDirection(0, 0);
         }
         if(event && typeof event.preventDefault === 'function') event.preventDefault();
@@ -1218,7 +1217,6 @@
 
 
     function windowResized() {
-        // *** AJUSTE NO CÁLCULO DA ALTURA DO CANVAS PARA MAXIMIZAR ÁREA ÚTIL ***
         const infoElem = document.getElementById('info-percentual');
         const dPadElem = document.getElementById('touch-controls');
         let infoHeight = 0;
@@ -1227,8 +1225,7 @@
         }
         let dPadHeight = 0;
         if (dPadElem) {
-            // Considera a altura do D-Pad e sua posição 'bottom' e um pouco de margem
-             dPadHeight = dPadElem.offsetHeight + parseFloat(getComputedStyle(dPadElem).bottom || 0) + 10; // 10 para uma margem extra
+             dPadHeight = dPadElem.offsetHeight + parseFloat(getComputedStyle(dPadElem).bottom || 0) + 10;
         }
 
         const availableHeight = windowHeight - infoHeight - dPadHeight;
@@ -1237,11 +1234,11 @@
         canvasHeight = floor(availableHeight / GRID_SIZE) * GRID_SIZE; 
         
         if (canvasWidth < GRID_SIZE * 20) canvasWidth = GRID_SIZE * 20; 
-        if (canvasHeight < GRID_SIZE * 15) canvasHeight = GRID_SIZE * 15; // Reduzido mínimo da altura um pouco
+        if (canvasHeight < GRID_SIZE * 15) canvasHeight = GRID_SIZE * 15;
         
         resizeCanvas(canvasWidth, canvasHeight);
         COLS = floor(width / GRID_SIZE);
         ROWS = floor(height / GRID_SIZE);
         resetGame();
-        calculateBackgroundImageTransform(); // Call after resize and game reset
+        calculateBackgroundImageTransform();
     }
